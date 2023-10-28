@@ -1,0 +1,24 @@
+photonlib:
+    filepath: "plib.h5"
+
+Detector: icarus_detector
+
+H5File:
+    FileName: 'dummy.h5'
+    Mode: 'w'
+
+ToyMC:
+    TimeAlgo: "random" # random, periodic, same
+    TrackAlgo: "top-bottom" # random, top-bottom
+    PeriodTPC: [-1300.,1300] # in micro-second, [-340-965(drift time),1698.4-340]
+    PeriodPMT: [-1000., 1000.] # in micro-second, [-1150, 3450-1150]
+    PEVariation: 0.00 # channel-to-channel (PMT-wise) variation in (fake) reco PE amount
+    LightYieldVariation: 0.00  # light yield variation per point in QCluster_t
+    PosXVariation: 0.0 # total x position variation in cm
+    TruncateTPC: 0 # 1=truncate TPC trajectory mimicing readout effect
+    NumTracks: 5
+    NumpySeed: 1
+    NeutrinoTime: 0.
+
+LightPath:
+    SegmentSize: 0.5
