@@ -23,7 +23,7 @@ setup(
         'torch',
         'h5py',
         'photonlib',
-        'siren',
+        'slar',
     ],
     long_description=long_description,
     long_description_content_type='text/markdown',
