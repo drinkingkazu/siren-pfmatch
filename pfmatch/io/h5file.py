@@ -243,6 +243,8 @@ class H5File(object):
                 photon_err_v = np.array(photon_err_v)
             if len(photon_true_v)>1:
                 photon_true_v = np.concatenate(photon_true_v)
+            else:
+                photon_true_v = np.array(photon_true_v)
 
             self._wh_flash[data_index] = photon_v.flatten()
             self._wh_flash_true[data_index] = photon_err_v.flatten()
