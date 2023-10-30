@@ -15,9 +15,9 @@ def main(cfg_file: str=None,
     num_tracks: int=0):
 
     if cfg_file is None and cfg_keyword is None:
-        raise RunTimeError('Must provide either --cfg_file or --cfg_keyword flag.')
+        raise RuntimeError('Must provide either --cfg_file or --cfg_keyword flag.')
     if cfg_file and cfg_keyword:
-        raise RunTimeError('Cannot specify both --cfg_file and --cfg_keyword flags.')
+        raise RuntimeError('Cannot specify both --cfg_file and --cfg_keyword flags.')
 
     if cfg_keyword:
         cfg_file = get_config(cfg_keyword)
@@ -28,12 +28,12 @@ def main(cfg_file: str=None,
     if plib_file:
         cfg['photonlib']=dict(filepath=plib_file)
     if cfg.get('photonlib',dict()).get('filepath') is None:
-        raise RunTimeError('Must specify the photonlib file path using a flag --plib_file or in the config file.')
+        raise RuntimeError('Must specify the photonlib file path using a flag --plib_file or in the config file.')
 
     plib = PhotonLib.load(cfg)
 
     if cfg.get('ToyMC') is None:
-        raise RunTimeError('ToyMC configuration block is missing from the config file.')
+        raise RuntimeError('ToyMC configuration block is missing from the config file.')
 
     if num_tracks:
         assert isinstance(num_tracks,int), f'--num_tracks must be an integer (given {num_tracks})'
@@ -45,7 +45,7 @@ def main(cfg_file: str=None,
     if output_file:
         cfg['H5File']=dict(FileName=output_file,Mode='w')
     if cfg.get('H5File',dict()).get('FileName') is None:
-        raise RunTimeError('Must specify the output file name using a flag --output_file or in the config file.')
+        raise RuntimeError('Must specify the output file name using a flag --output_file or in the config file.')
 
     fout = H5File(cfg)
 
