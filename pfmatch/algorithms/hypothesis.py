@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 from photonlib import PhotonLib
-from siren.nets import SirenVis
+from slar.nets import SirenVis
 
 
 class F(torch.autograd.Function):
