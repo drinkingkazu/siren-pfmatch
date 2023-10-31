@@ -7,9 +7,9 @@ from pfmatch.datatypes import QCluster
 
 class LightPath():
 
-    def __init__(self, cfg: dict, detector_specs: dict = dict()):
+    def __init__(self, cfg: dict = dict(), detector_specs: dict = dict()):
 
-        self._gap = cfg['LightPath'].get('segment_size',0.5) # in cm
+        self._gap = cfg.get('LightPath', dict()).get('SegmentSize',0.5) # in cm
 
         self._dEdxMIP = detector_specs.get('MIPdEdx',2.1)
         self._light_yield = detector_specs.get('LightYield',24000.)
@@ -29,7 +29,7 @@ class LightPath():
     
     
     
-    def segment_to_qpoints(self, pt1, pt2):
+    def segment_to_qpoints(self, pt1, pt2) -> QCluster:
         """
         Make a qcluster instance based given trajectory points and detector specs
         ---------
@@ -42,8 +42,8 @@ class LightPath():
         """
         norm_alg = torch.linalg.norm
         if not isinstance(pt1, torch.Tensor):
-            pt1 = torch.as_tensor(pt1)
-            pt2 = torch.as_tensor(pt2)
+            pt1 = torch.as_tensor(pt1, dtype=torch.float32)
+            pt2 = torch.as_tensor(pt2, dtype=torch.float32)
 
 
         dist = norm_alg(pt2 - pt1)
@@ -54,12 +54,12 @@ class LightPath():
             qpt_v=torch.zeros(size=(1,pt1.shape[0]+1),dtype=pt1.dtype,device=pt1.device)
             qpt_v[0,:-1] = (pt1 + pt2) / 2 
             qpt_v[0, -1] = self.light_yield * self.dEdxMIP * dist
-            return qpt_v
+            return QCluster(qpt_v)
 
         # segment larger than gap threshold
         direct = (pt2 - pt1) / dist
         weight = (dist - int(dist / self.gap) * self.gap)        
-        num_pts = num_div if torch.allclose(weight,torch.as_tensor(0.)) else num_div+1
+        num_pts = num_div if torch.allclose(weight.float(),torch.as_tensor(0.)) else num_div+1
         qpt_v = torch.zeros(size=(num_pts,pt1.shape[0]+1),dtype=pt1.dtype,device=pt1.device) 
         for div_idx in range(num_pts):
             qpt = qpt_v[div_idx]
@@ -70,7 +70,7 @@ class LightPath():
                 qpt[:-1] = pt1 + direct * (self.gap * div_idx + weight / 2.)
                 qpt[-1 ] = self.light_yield * self.dEdxMIP * weight
 
-        return qpt_v
+        return QCluster(qpt_v)
         
     def track_to_qpoints(self, track: torch.Tensor) -> QCluster:
         """
@@ -82,7 +82,7 @@ class LightPath():
         Returns
           a qcluster instance
         """
-        track = torch.as_tensor(track)
+        track = torch.as_tensor(track, dtype=torch.float32)
 
         assert track.dim() == 2, 'The track must be two dimension'
         assert track.shape[0] > 1, 'The track must have >= two points'
@@ -93,7 +93,7 @@ class LightPath():
         #qpt_v = torch.tensor([track[0][0], track[0][1], track[0][2], 0.]).reshape(1,-1)
 
         for i in range(len(track)-1):
-            qpt_vv.append(self.segment_to_qpoints(track[i],track[i+1]))
+            qpt_vv.append(self.segment_to_qpoints(track[i],track[i+1]).qpt_v)
             #print(track[i],'=>',track[i+1])
             #print(qpt_vv[-1].shape,'...',qpt_vv[-1][0],'=>',qpt_vv[-1][-1],'\n')
             #self.fill_qcluster(np.array(track[i]), np.array(track[i+1]), res)
@@ -103,4 +103,4 @@ class LightPath():
         #                                                  device=res.qpt_v.device,
         #                                                 ).reshape(1,-1)])
         
-        return torch.cat(qpt_vv)
+        return QCluster(torch.cat(qpt_vv))
