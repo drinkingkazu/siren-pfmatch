@@ -6,7 +6,7 @@ import torch
 import numpy as np
 from photonlib import PhotonLib
 from slar.nets import SirenVis
-from pfmatch.datatypes import QCluster
+from pfmatch.datatypes import QCluster, Flash
 from pfmatch.algorithms import PoissonMatchLoss, FlashHypothesis
 from pfmatch.utils import partial_flash_time_integral
 
@@ -35,7 +35,7 @@ class XOptimizer:
         lrs = this_cfg.get('LearningRateScheduler',dict())
         if lrs.get('Name'):
             if not hasattr(torch.optim.lr_scheduler,lrs['Name']):
-                raise RunTimeError(f'Learning rate scheduler not available: {lrs["Name"]}')
+                raise RuntimeError(f'Learning rate scheduler not available: {lrs["Name"]}')
                 
             self.lrs_type = getattr(torch.optim.lr_scheduler,lrs['Name'])
             self.lrs_args = lrs.get('Parameters')        
