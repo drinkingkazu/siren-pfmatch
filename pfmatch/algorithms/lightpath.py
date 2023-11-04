@@ -2,8 +2,6 @@ import numpy as np
 import torch
 import yaml
 
-from pfmatch.datatypes import QCluster
-
 
 class LightPath():
 
@@ -29,7 +27,7 @@ class LightPath():
     
     
     
-    def segment_to_qpoints(self, pt1, pt2) -> QCluster:
+    def segment_to_qpoints(self, pt1, pt2) -> torch.Tensor:
         """
         Make a qcluster instance based given trajectory points and detector specs
         ---------
@@ -54,7 +52,7 @@ class LightPath():
             qpt_v=torch.zeros(size=(1,pt1.shape[0]+1),dtype=pt1.dtype,device=pt1.device)
             qpt_v[0,:-1] = (pt1 + pt2) / 2 
             qpt_v[0, -1] = self.light_yield * self.dEdxMIP * dist
-            return QCluster(qpt_v)
+            return qpt_v
 
         # segment larger than gap threshold
         direct = (pt2 - pt1) / dist
@@ -70,9 +68,9 @@ class LightPath():
                 qpt[:-1] = pt1 + direct * (self.gap * div_idx + weight / 2.)
                 qpt[-1 ] = self.light_yield * self.dEdxMIP * weight
 
-        return QCluster(qpt_v)
+        return qpt_v
         
-    def track_to_qpoints(self, track: torch.Tensor) -> QCluster:
+    def track_to_qpoints(self, track: torch.Tensor) -> torch.Tensor:
         """
         Create a qcluster instance from a trajectory
         ---------
@@ -93,7 +91,7 @@ class LightPath():
         #qpt_v = torch.tensor([track[0][0], track[0][1], track[0][2], 0.]).reshape(1,-1)
 
         for i in range(len(track)-1):
-            qpt_vv.append(self.segment_to_qpoints(track[i],track[i+1]).qpt_v)
+            qpt_vv.append(self.segment_to_qpoints(track[i],track[i+1]))
             #print(track[i],'=>',track[i+1])
             #print(qpt_vv[-1].shape,'...',qpt_vv[-1][0],'=>',qpt_vv[-1][-1],'\n')
             #self.fill_qcluster(np.array(track[i]), np.array(track[i+1]), res)
@@ -103,4 +101,4 @@ class LightPath():
         #                                                  device=res.qpt_v.device,
         #                                                 ).reshape(1,-1)])
         
-        return QCluster(torch.cat(qpt_vv))
+        return torch.cat(qpt_vv)
