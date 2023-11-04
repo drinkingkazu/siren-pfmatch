@@ -15,13 +15,13 @@ class XOptimizer:
     def __init__(self, cfg:dict, plib: PhotonLib | SirenVis):
         
         self._plib = plib
-        this_cfg = cfg['XOptimizer']
+        this_cfg = cfg.get('XOptimizer', dict())
         self.max_iterations  = this_cfg.get('MaxIteration',        500  )
         self.initial_lr      = this_cfg.get('InitLearningRate',    1.0  )
         self.stop_patience   = this_cfg.get('StopPatience',        20   )
         self.stop_xmin_delta = this_cfg.get('StopDeltaXMin',       0.1  )
         self.stop_loss_delta = this_cfg.get('StopDeltaLoss',       0.001)
-        self.loss_scan_step  = this_cfg.get('LossScanStepSize',    -1.  )
+        self.loss_scan_step  = this_cfg.get('LossScanStepSize',    1.  )
         self.correct_pe_time = this_cfg.get('CorrectTimeWidth',    False)
         self.verbose         = this_cfg.get('Verbose',             False)
 
@@ -38,7 +38,7 @@ class XOptimizer:
                 raise RuntimeError(f'Learning rate scheduler not available: {lrs["Name"]}')
                 
             self.lrs_type = getattr(torch.optim.lr_scheduler,lrs['Name'])
-            self.lrs_args = lrs.get('Parameters')        
+            self.lrs_args = lrs.get('Parameters', dict())        
         
         self._model = FlashHypothesis(cfg,self.plib)
         self._criterion = PoissonMatchLoss()
@@ -94,6 +94,7 @@ class XOptimizer:
     
 
     def scan_loss(self, input:torch.Tensor, target:torch.Tensor):
+        assert input.dtype == torch.float32, 'input must be float32, got %s' % input.dtype
 
         # Calculate the range of dx value to scan
         dx_min, dx_max = self.model.dx_range(input)
