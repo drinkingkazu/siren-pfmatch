@@ -8,7 +8,7 @@ from slar.nets import SirenVis
 
 class QCluster:
     def __init__(self, qpt_v, idx=2**31-1, time=np.inf, xmin_true=np.inf):
-        self._qpt_v = torch.as_tensor(qpt_v) #I THINK: vector of 3D points along track, along with photons "q" originating from each position
+        self._qpt_v = torch.as_tensor(qpt_v, dtype=torch.float32) # vector of 3D points along track, along with photons "q" originating from each position
         if not (len(self._qpt_v.shape) == 2 and self._qpt_v.shape[1] == 4):
             raise ValueError(f'qpt_v must have shape (N,4), got {self._qpt_v.shape}')
 
