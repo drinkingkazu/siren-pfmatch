@@ -88,12 +88,9 @@ class MOptimizer:
                                          topk=self.prefilter_topk,
                                          loss_threshold=self.prefilter_loss,
                                          mode='both')
-        flags = [False]*len(pairs)
-        for idx, (row,col) in enumerate(pairs_ids):
-            if not [row,col] in topk_pairs:
-                continue
-            flags[idx] = True
-            
+
+        flags = [([row,col] in topk_pairs) for row,col in pairs_ids]
+
         if self.verbose:
             print(f'[MOptimizer:prefilter] selected {np.sum(flags)} out of {len(pairs)}')
             print(f'[MOptimizer:prefilter] time taken for pre-filtering {match.duration.sum().item()} [s]')
