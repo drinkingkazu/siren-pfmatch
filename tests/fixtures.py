@@ -11,15 +11,14 @@ from pfmatch.datatypes import Flash, QCluster
 from slar.nets import SirenVis
 
 from photonlib import PhotonLib
-
-GLOBAL_SEED = 123
+from tests.conftest import GLOBAL_SEED
 
 @pytest.fixture
-def rng():
+def rng(GLOBAL_SEED):
     return  np.random.default_rng(GLOBAL_SEED)
 
 @pytest.fixture
-def torch_rng():
+def torch_rng(GLOBAL_SEED):
     return torch.Generator().manual_seed(GLOBAL_SEED)
 
 def writable_temp_file(suffix=None):
