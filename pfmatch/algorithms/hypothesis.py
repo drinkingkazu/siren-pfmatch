@@ -12,7 +12,6 @@ class F(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, track, plib):
-
         vox_ids = plib.meta.coord_to_voxel(track[:,:3])
         ctx.save_for_backward(track)
         ctx.plib = plib
@@ -25,7 +24,6 @@ class F(torch.autograd.Function):
         vox_ids = ctx.plib.meta.coord_to_voxel(track[:,:3])
         
         grad_plib = (ctx.plib.vis[vox_ids+1] - ctx.plib.vis[vox_ids]) / ctx.plib.meta.voxel_size[0]
-        grad_plib = grad_plib * (track[:,3].unsqueeze(-1))
         grad_input = torch.matmul(grad_plib, grad_output.unsqueeze(-1))
         pad = torch.zeros(grad_input.shape[0], 3, device=grad_output.device)
         return torch.cat((grad_input,pad), -1), None
@@ -36,7 +34,7 @@ class FlashHypothesis(torch.nn.Module):
     def __init__(self, cfg:dict, plib:PhotonLib | SirenVis): 
         super().__init__()
         self._plib = plib
-        fmatch_cfg = cfg.get('FlashHypothesis',dict())
+        # fmatch_cfg = cfg.get('FlashHypothesis',dict())
 
         self._dx = torch.nn.Parameter(torch.as_tensor([0.]))
         self._dx.data.fill_(0.)
@@ -62,6 +60,9 @@ class FlashHypothesis(torch.nn.Module):
     def dx_range(self, track):
         track_xmin = torch.min(track[:,0]).item()
         track_xmax = torch.max(track[:,0]).item()
+        assert self._xmin <= track_xmin, f'Track minimum x {track_xmin} is outside the volume minimum x {self._xmin}'
+        assert self._xmax >= track_xmax, f'Track maximum x {track_xmax} is outside the volume maximum x {self._xmax}'
+
         dx_min = self._xmin - track_xmin
         dx_max = self._xmax - track_xmax
         return dx_min, dx_max
@@ -75,13 +76,8 @@ class FlashHypothesis(torch.nn.Module):
         ---------
         Returns hypothesized number of p.e. to be detected in each PMT
         """
-        track_xmin = torch.min(track[:,0]).item()
-        track_xmax = torch.max(track[:,0]).item()
-        assert self._xmin <= track_xmin, f'Track minimum x {track_xmin} is outside the volume minimum x {self._xmin}'
-        assert self._xmax >= track_xmax, f'Track maximum x {track_xmax} is outside the volume maximum x {self._xmax}'
 
-        self._dx_min = self._xmin - track_xmin
-        self._dx_max = self._xmax - track_xmax
+        self._dx_min, self.dx_max = self.dx_range(track)
         self._dx.data.clamp_(self._dx_min, self._dx_max)
         shift = torch.cat((self._dx, torch.zeros(3, device=track.device)), -1)
         shifted_track = torch.add(track, shift.expand(track.shape[0], -1))

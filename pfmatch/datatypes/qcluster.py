@@ -7,8 +7,11 @@ from photonlib import PhotonLib
 from slar.nets import SirenVis
 
 class QCluster:
-    def __init__(self, qpt_v, idx=np.inf, time=np.inf, xmin_true=np.inf):
-        self._qpt_v = torch.as_tensor(qpt_v) #I THINK: vector of 3D points along track, along with photons "q" originating from each position
+    def __init__(self, qpt_v, idx=2**31-1, time=np.inf, xmin_true=np.inf):
+        self._qpt_v = torch.as_tensor(qpt_v, dtype=torch.float32) # vector of 3D points along track, along with photons "q" originating from each position
+        if not (len(self._qpt_v.shape) == 2 and self._qpt_v.shape[1] == 4):
+            raise ValueError(f'qpt_v must have shape (N,4), got {self._qpt_v.shape}')
+
         self._idx = idx # index from original larlite vector
         self._time = time # assumed time w.r.t trigger for reconstruction
         self._xmin_true = xmin_true # time from MCTrack information
@@ -17,11 +20,15 @@ class QCluster:
         return len(self.qpt_v)
 
     def __add__(self,other):
-        return torch.cat([self.qpt_v, other.qpt_v], 0)
+        return QCluster(torch.cat([self.qpt_v, other.qpt_v], 0))
     
     @property
     def qpt_v(self):
         return self._qpt_v
+    
+    @qpt_v.setter
+    def qpt_v(self, qpt_v):
+        self._qpt_v = qpt_v
 
     @property
     def idx(self):

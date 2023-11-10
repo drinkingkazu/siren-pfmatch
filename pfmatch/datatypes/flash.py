@@ -9,7 +9,7 @@ class Flash:
     """
     
     def __init__(self, pe_v, pe_true_v=None, pe_err_v=None,
-        idx=np.inf, time=np.inf, time_true=np.inf, time_width=np.inf):
+        idx=2**31-1, time=np.inf, time_true=np.inf, time_width=np.inf):
  
         self._pe_v = torch.as_tensor(pe_v)
         self._pe_true_v = pe_true_v if pe_true_v is None else torch.as_tensor(pe_true_v)

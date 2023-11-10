@@ -96,7 +96,7 @@ def flash_time_integral(flash:Flash, Fractions:list, Taus:list):
     assert np.sum([int(tau>0.) for tau in Taus]) == len(Taus), f'Taus must be all positive value: {Taus}'
 
     if flash.time_width is None or np.isnan(flash.time_width) or np.isinf(flash.time_width):
-        raise RunTimeError(f'flash.time_width is invalid {flash.time_width}')
+        raise RuntimeError(f'flash.time_width is invalid {flash.time_width}')
 
     integral_factor = 0.
     for i in range(len(Fractions)):

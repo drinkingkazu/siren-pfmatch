@@ -2,14 +2,12 @@ import numpy as np
 import torch
 import yaml
 
-from pfmatch.datatypes import QCluster
-
 
 class LightPath():
 
-    def __init__(self, cfg: dict, detector_specs: dict = dict()):
+    def __init__(self, cfg: dict = dict(), detector_specs: dict = dict()):
 
-        self._gap = cfg['LightPath'].get('segment_size',0.5) # in cm
+        self._gap = cfg.get('LightPath', dict()).get('SegmentSize',0.5) # in cm
 
         self._dEdxMIP = detector_specs.get('MIPdEdx',2.1)
         self._light_yield = detector_specs.get('LightYield',24000.)
@@ -29,7 +27,7 @@ class LightPath():
     
     
     
-    def segment_to_qpoints(self, pt1, pt2):
+    def segment_to_qpoints(self, pt1, pt2) -> torch.Tensor:
         """
         Make a qcluster instance based given trajectory points and detector specs
         ---------
@@ -42,8 +40,8 @@ class LightPath():
         """
         norm_alg = torch.linalg.norm
         if not isinstance(pt1, torch.Tensor):
-            pt1 = torch.as_tensor(pt1)
-            pt2 = torch.as_tensor(pt2)
+            pt1 = torch.as_tensor(pt1, dtype=torch.float32)
+            pt2 = torch.as_tensor(pt2, dtype=torch.float32)
 
 
         dist = norm_alg(pt2 - pt1)
@@ -59,7 +57,7 @@ class LightPath():
         # segment larger than gap threshold
         direct = (pt2 - pt1) / dist
         weight = (dist - int(dist / self.gap) * self.gap)        
-        num_pts = num_div if torch.allclose(weight,torch.as_tensor(0.)) else num_div+1
+        num_pts = num_div if torch.allclose(weight.float(),torch.as_tensor(0.)) else num_div+1
         qpt_v = torch.zeros(size=(num_pts,pt1.shape[0]+1),dtype=pt1.dtype,device=pt1.device) 
         for div_idx in range(num_pts):
             qpt = qpt_v[div_idx]
@@ -72,7 +70,7 @@ class LightPath():
 
         return qpt_v
         
-    def track_to_qpoints(self, track: torch.Tensor) -> QCluster:
+    def track_to_qpoints(self, track: torch.Tensor) -> torch.Tensor:
         """
         Create a qcluster instance from a trajectory
         ---------
@@ -82,7 +80,7 @@ class LightPath():
         Returns
           a qcluster instance
         """
-        track = torch.as_tensor(track)
+        track = torch.as_tensor(track, dtype=torch.float32)
 
         assert track.dim() == 2, 'The track must be two dimension'
         assert track.shape[0] > 1, 'The track must have >= two points'
