@@ -48,6 +48,11 @@ class ToyMC():
         self.plib = plib
         self.qcluster_algo = LightPath(cfg,self.detector)
         
+        n_out = self.plib._n_outs if hasattr (self.plib, '_n_outs') else len(self.plib)
+        self.pe_var = torch.ones(n_out)
+        if self.pe_variation>0.:
+            self.pe_var = abs(self.rng.normal(1.0, self.pe_variation, n_out))
+        
     def make_flashmatch_inputs(self, num_match=None):
         """
         Make N input pairs for flash matching
@@ -195,7 +200,7 @@ class ToyMC():
         """
         Create a qcluster instance from a trajectory
         ---------
-        Arguments
+        Arguments 
             track: trajectory defined by 3D points
         -------
         Returns
@@ -210,7 +215,7 @@ class ToyMC():
         if self.ly_variation > 0:
             var = abs(self.rng.normal(1.0, self.ly_variation, len(qpt_v)))
             for idx in range(len(qpt_v)):
-                qpt_v.qpt_v[idx][-1] *= var[idx]
+                qpt_v[idx][-1] *= var[idx]
         if self.posx_variation > 0:
             var = abs(self.rng.normal(1.0, self.posx_variation/xsum, len(qpt_v)))
             for idx in range(len(qpt_v)):
@@ -228,15 +233,11 @@ class ToyMC():
         Returns
             a flash instance 
         """
-        pe_true_v = torch.sum(self.plib.visibility(qpt_v[:,:3])*(qpt_v[:, 3].unsqueeze(-1)), axis = 0)
+        pe_true_v = torch.sum(self.plib.visibility(qpt_v[:,:3])*(qpt_v[:, 3].unsqueeze(-1)), axis = 0).int().float()
         pe_v = pe_true_v.detach().clone()
         pe_err_v = torch.zeros_like(pe_v)
-        # apply variation if needed
-        var = np.ones(shape=(len(pe_v)),dtype=np.float32)
-        if self.pe_variation>0.:
-            var = abs(self.rng.normal(1.0, self.pe_variation, len(pe_v)))
         for idx in range(len(pe_v)):
-            estimate = float(int(self.rng.poisson(pe_v[idx].item() * var[idx])))
+            estimate = self.rng.poisson(pe_v[idx].item() * self.pe_var[idx])
             pe_v[idx] = estimate
             pe_err_v[idx] = np.sqrt(estimate)
 
