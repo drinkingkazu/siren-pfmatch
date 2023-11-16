@@ -149,20 +149,20 @@ class H5File(object):
                 flash_v.append(Flash(pe_v=flash,
                     pe_err_v=flash_err_v[j],
                     pe_true_v=flash_true_v[j],
-                    idx=event_fidx_v[i],
-                    time=event_ftime_v[i],
-                    time_true=event_ftime_true_v[i],
-                    time_width=event_ftime_width_v[i]
+                    idx=event_fidx_v[i][j],
+                    time=event_ftime_v[i][j],
+                    time_true=event_ftime_true_v[i][j],
+                    time_width=event_ftime_width_v[i][j],
                     )
                 )
 
             qcluster_v = []
             start = 0
-            for ctr in event_group:
+            for j, ctr in enumerate(event_group):
                 qc = QCluster(qpt_v=event_point[start:start+ctr],
-                    idx=event_qidx_v[i],
-                    time=event_qtime_v[i],
-                    xmin_true=event_qxmin_true_v[i])
+                    idx=event_qidx_v[i][j],
+                    time=event_qtime_v[i][j],
+                    xmin_true=event_qxmin_true_v[i][j])
                 qcluster_v.append(qc)
                 start = start + ctr
             
@@ -247,8 +247,8 @@ class H5File(object):
                 photon_true_v = np.array(photon_true_v)
 
             self._wh_flash[data_index] = photon_v.flatten()
-            self._wh_flash_true[data_index] = photon_err_v.flatten()
-            self._wh_flash_err[data_index]  = photon_true_v.flatten()
+            self._wh_flash_true[data_index]  = photon_true_v.flatten()
+            self._wh_flash_err[data_index] = photon_err_v.flatten()
 
             self._wh_ftrue_group[data_index] = np.array(fgroup_true)
             self._wh_ferr_group[data_index]  = np.array(fgroup_err )
