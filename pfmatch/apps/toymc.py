@@ -41,7 +41,7 @@ class ToyMC():
                 assert i0 <= i1, f'Range low end {i0} must be equal or smaller than the high end {i1}'
                 self.num_tracks=[i0,i1]
             else:
-                raise ValueError(f'NumTracks argument must be an integero or "N-M" string format')
+                raise ValueError('NumTracks argument must be an integero or "N-M" string format')
         else:
             raise ValueError(f'NumTracks argument invalid: {num_tracks}')
 
@@ -126,7 +126,7 @@ class ToyMC():
 
         return result
 
-    def gen_trajectories(self, num_tracks, seed=123):
+    def gen_trajectories(self, num_tracks):
         """
         Generate N random trajectories.
         ---------
