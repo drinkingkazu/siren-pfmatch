@@ -49,6 +49,17 @@ class SOptimizer:
         self._opt, epoch = optimizer_factory(self._model.parameters(), cfg)
         self._logger = CSVLogger(cfg)
         
+        lrs = cfg['train'].get('lr_scheduler',dict())
+        self.scheduler = None
+        if lrs.get('name'):
+            if not hasattr(torch.optim.lr_scheduler,lrs['name']):
+                raise RuntimeError(f'Learning rate scheduler not available: {lrs["Name"]}')
+                
+            lrs_type = getattr(torch.optim.lr_scheduler,lrs['name'])
+            lrs_args = lrs.get('parameters', dict())
+            print('[SOptimizer] Using learning rate scheduler',lrs['name'])
+            self.scheduler = lrs_type(self._opt, **lrs_args)
+        
         # resume training?
         self.iteration, self.epoch = 0, 0
         ckpt_file = cfg['model'].get('ckpt_file')
@@ -122,7 +133,10 @@ class SOptimizer:
         self._opt.zero_grad()
         loss.backward()
         self._opt.step()
-        
+
+        if self.scheduler:
+            self.scheduler.step(loss)
+
         return target, pred, loss
     
     def train(self):
@@ -130,7 +144,7 @@ class SOptimizer:
         Trains SIREN using the ToyMC dataset.
         """
         twait = time()
-        stop_training = False
+        stop_training = False            
     
         # epoch loop
         while self.iteration < self.iteration_max and \
