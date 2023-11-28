@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 from pfmatch.algorithms import PoissonMatchLoss, SirenTrack
-from pfmatch.apps.toymc import ToyMCDataset
+from pfmatch.io import ToyMCDataset
 
 
 class SOptimizer:
