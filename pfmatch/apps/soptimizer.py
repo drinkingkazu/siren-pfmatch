@@ -3,9 +3,9 @@ from time import time
 
 import torch
 import yaml
-from slar.optimizers import optimizer_factory
-from slar.utils import CSVLogger, get_device
-from torch.utils.data import DataLoader
+from slar.optimizers import get_lr, optimizer_factory
+from pfmatch.utils import CSVLogger, get_device, load_toymc_config
+from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 from pfmatch.algorithms import PoissonMatchLoss, SirenTrack
@@ -45,30 +45,51 @@ class SOptimizer:
 
         # training things
         dataset = ToyMCDataset(cfg)
-        self._dataloader = DataLoader(dataset, collate_fn=dataset.collate_fn, **cfg['data']['loader'])
+        self._dataloader = {
+            'train': DataLoader(dataset, collate_fn=dataset.collate_fn, **cfg['data']['loader']),
+            'val': None
+        }
         self._opt, epoch = optimizer_factory(self._model.parameters(), cfg)
+        
+        # resume training
+        self.iteration, self.epoch = 0, 0
+        if cfg['train'].get('resume') and cfg['model']['ckpt_file']:
+            import re
+            # file name goes as iteration-{}-epoch-{}.ckpt
+            iteration, epoch = re.findall(r'iteration-(\d+)-epoch-(\d+).ckpt', cfg['model']['ckpt_file'])[0]
+            self.iteration = int(iteration)
+            self.epoch = int(epoch)
+            print('[SOptimizer] Resuming training at iteration',iteration,'epoch',epoch)
+        
         self._logger = CSVLogger(cfg)
         
+        # learning rate scheduler
         lrs = cfg['train'].get('lr_scheduler',dict())
         self.scheduler = None
         if lrs.get('name'):
             if not hasattr(torch.optim.lr_scheduler,lrs['name']):
                 raise RuntimeError(f'Learning rate scheduler not available: {lrs["Name"]}')
                 
+            val_split = lrs.get('validation_split', 0.1)
+            n_val = int(len(dataset)*val_split)
+            n_train = len(dataset) - n_val
+            
+            if isinstance(cfg['ToyMC'], str):
+                seed = load_toymc_config(cfg['ToyMC'])['ToyMC'].get('NumpySeed', 0)
+            else:
+                seed = cfg.get('ToyMC', dict()).get('NumpySeed', 0)
+            generator = torch.Generator().manual_seed(seed)
+            train, val = random_split(dataset, [n_train, n_val], generator=generator)
+            self._dataloader = {
+                'train': DataLoader(train, collate_fn=dataset.collate_fn, **cfg['data']['loader']),
+                'val': DataLoader(val, collate_fn=dataset.collate_fn, **cfg['data']['loader'])
+            }   
             lrs_type = getattr(torch.optim.lr_scheduler,lrs['name'])
             lrs_args = lrs.get('parameters', dict())
-            print('[SOptimizer] Using learning rate scheduler',lrs['name'])
+            print('[lr_scheduler] Using learning rate scheduler',lrs['name'])
+            print('[lr_scheduler] Using validation split',val_split,'for learning rate scheduler')
             self.scheduler = lrs_type(self._opt, **lrs_args)
-        
-        # resume training?
-        self.iteration, self.epoch = 0, 0
-        ckpt_file = cfg['model'].get('ckpt_file')
-        if ckpt_file and cfg['train'].get('resume'):
-            import re
-            # iteration-{}-epoch-{}.ckpt
-            iteration, epoch = re.findall(r'iteration-(\d+)-epoch-(\d+).ckpt',ckpt_file)[0]
-            self.iteration, self.epoch = int(iteration), int(epoch)
-            print('[SOptimizer] resuming training from iteration',self.iteration,'epoch',self.epoch)
+
 
         # training hyperparameters
         train_cfg = cfg.get('train',dict())
@@ -88,6 +109,16 @@ class SOptimizer:
         return self._model
     
     @property
+    def opt(self):
+        """torch optimizer (Adam)"""""
+        return self._opt
+    
+    @property
+    def device(self):
+        """Torch device being used"""
+        return self._device
+    
+    @property
     def criterion(self):
         """Loss function for the training process (PoissonMatchLoss)"""
         return self._criterion
@@ -102,11 +133,7 @@ class SOptimizer:
         """logger for the training process"""
         return self._logger
 
-    @property
-    def opt(self):
-        """torch optimizer (Adam)"""""
-        return self._opt
-        
+
     def step(self, input):
         """Runs a single step of the optimizer.
 
@@ -117,25 +144,19 @@ class SOptimizer:
             `ToyMCDataset.__getitem__`.
         """
 
-        input['qpt_v'] = input['qpt_v'].to(self._device)
-        input['pe_v'] = input['pe_v'].to(self._device)
-        input['q_sizes'] = input['q_sizes'].to(self._device)
+        input['qpt_v'] = input['qpt_v'].to(self.device)
+        input['pe_v'] = input['pe_v'].to(self.device)
+        input['q_sizes'] = input['q_sizes'].to(self.device)
+        input['weights'] = input['weights'].to(self.device)
 
         # run model
         out = self.model(input)
         target = input['pe_v']
         pred = out['pe_v']
-
+        weights = input['weights']
+        
         # compute loss
-        loss = self.criterion(pred, target) # todo: weight=1 for now
-
-        # backprop
-        self._opt.zero_grad()
-        loss.backward()
-        self._opt.step()
-
-        if self.scheduler:
-            self.scheduler.step(loss)
+        loss = self.criterion(pred, target, weights)
 
         return target, pred, loss
     
@@ -149,19 +170,41 @@ class SOptimizer:
         # epoch loop
         while self.iteration < self.iteration_max and \
               self.epoch < self.epoch_max:  
+                  
+
+            if self.scheduler:
+                # validate every epoch
+                with torch.no_grad():
+                    val_loss = 0
+                    for batch in self.dataloader['val']:
+                        val_loss += self.step(batch)[-1]
+                    val_loss /= len(self.dataloader['val'])
+                self.scheduler.step(val_loss)
+                  
             # iteration loop (batch loop)
-            for batch in tqdm(self.dataloader, desc='Epoch %-3d'%self.epoch, unit='batch'):
+            for batch in tqdm(self.dataloader['train'], desc='Epoch %-3d'%self.epoch, unit='batch'):
                 self.iteration += 1
                 twait = time() - twait
 
                 # step the model                    
                 ttrain = time()
                 target, pred, loss = self.step(batch)
+                # backprop
+                self.opt.zero_grad()
+                loss.backward()
+                self.opt.step()
                 ttrain = time() - ttrain
                 
+                
                 # log training parameters
-                self.logger.record(['iter','epoch','loss','ttrain','twait'],
-                                    [self.iteration, self.epoch, loss.item(), ttrain, twait])
+                cols = ['iter','epoch','loss','ttrain','twait', 'lr']
+                vals = [self.iteration, self.epoch, loss.item(), ttrain, twait, get_lr(self.opt)]
+
+                if self.scheduler:
+                    cols.append('val_loss')
+                    vals.append(val_loss)
+                self.logger.record(cols, vals)
+
                 twait = time()
 
                 # step the logger (pe spectrum)
@@ -176,6 +219,7 @@ class SOptimizer:
                     stop_training = True
                     break
 
+
             if stop_training:
                 break
                         
@@ -183,7 +227,7 @@ class SOptimizer:
             
             # save model params periodically after epochs
             if (self.save_every_epochs*self.epoch) > 0 and self.epoch % self.save_every_epochs == 0:
-                self.save(count=self.iteration/len(self.dataloader.dataset))
+                self.save(count=self.iteration/len(self.dataloader['train'].dataset))
             
         print('[SOptimizer] Stopped training at iteration',self.iteration,'epochs',self.epoch)
         self.logger.write()
@@ -193,7 +237,7 @@ class SOptimizer:
     def save(self, count=None):
         """Saves the model parameters to a checkpoint file."""
         if count is None:
-            count = self.epoch
+            count = self.iteration/len(self.dataloader['train'].dataset)
 
         filename = os.path.join(self.logger.logdir,'iteration-%06d-epoch-%04d.ckpt')
         self.model.save_state(filename % (self.iteration, self.epoch), self.opt, count)
