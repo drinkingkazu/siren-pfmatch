@@ -136,15 +136,39 @@ class ToyMC():
         Returns
             a list of trajectories, each is a pair of 3D start and end points
         """
-        #track_algo = 'random'
-
-        res = []
-
         #load detector dimension 
         xmin, ymin, zmin = self.detector['ActiveVolumeMin']
         xmax, ymax, zmax = self.detector['ActiveVolumeMax']
-        between = lambda min, max: min + (max - min) * self.rng.random()  # noqa: E731
+        
+        if self.track_algo == 'random-extended':
+            from pfmatch.utils import (generate_unbounded_tracks,
+                                       segment_intersection_point,
+                                       is_outside_boundary)
 
+            boundary = ((xmin, xmax), (ymin, ymax), (zmin, zmax))
+            tracks = generate_unbounded_tracks(num_tracks, boundary, self.rng)
+            mask = np.asarray([is_outside_boundary(point, boundary) for point in tracks.reshape(-1, 3)]).reshape(-1, 2)
+            one_in = mask.sum(axis=1) == 1
+            all_in = mask.sum(axis=1) == 0
+            tracks_both_in = tracks[all_in]
+            tracks_one_in = tracks[one_in]
+
+            for track,m in zip(tracks_one_in, mask[one_in]):
+                bad_pt = track[m].squeeze()
+                good_pt = track[~m].squeeze()
+                
+                intersection = segment_intersection_point(boundary, good_pt, bad_pt)
+                track[m] = intersection.reshape(-1, 3)
+                
+            out_tracks = np.vstack([tracks_both_in, tracks_one_in])
+
+            if len(out_tracks) < num_tracks:
+                return np.vstack([out_tracks, self.gen_trajectories(num_tracks-len(out_tracks))])
+             
+            return out_tracks.tolist()
+
+        res = []
+        between = lambda min, max: min + (max - min) * self.rng.random()  # noqa: E731
         for _ in range(num_tracks):
             if self.track_algo=="random":
                 start_pt = [between(xmin, xmax),
@@ -300,8 +324,8 @@ class ToyMCDataset(Dataset):
             photon library to use for input to the ToyMC object
         """
 
-        this_cfg = cfg.get('data')        
-        fname = this_cfg['dataset']['filepath']
+        self._cfg = cfg.get('data')        
+        fname = self._cfg['dataset']['filepath']
 
         self._plib = None
         self._toymc = None
@@ -310,7 +334,7 @@ class ToyMCDataset(Dataset):
         self.qpt_vv_sizes = None
         self.qpt_vv_toc = None
         self.pe_vv = None
-                
+        self.n_tracks = self._cfg['dataset'].get('size')   
         if os.path.exists(fname):
             self.load(fname)
             return
@@ -320,15 +344,13 @@ class ToyMCDataset(Dataset):
 
         print('[ToyMCDataset] dataset file',fname,'not found... generating via ToyMC')
         self._plib = PhotonLib.load(cfg)
+        
         self._toymc = ToyMC(cfg, load_detector_config(cfg), self._plib)
-        n_tracks = this_cfg['dataset'].get('size')
-        if n_tracks is None:
+        if self.n_tracks is None:
             raise RuntimeError(f'[ToyMCDataset] dataset file {fname} not found and size not specified')
 
-        self.generate(n_tracks, fname, batch_size=this_cfg['dataset'].get('batch_size'))
+        self.generate(self.n_tracks, fname, batch_size=self._cfg['dataset'].get('batch_size'))
         self.load(fname)
-        
-        # todo: vis weights like in PhotonLibDataset?
         
     @property
     def toymc(self):
@@ -340,6 +362,9 @@ class ToyMCDataset(Dataset):
         
     def __len__(self):
         """number of tracks in the dataset"""
+        if self.n_tracks:
+            return self.n_tracks
+        
         return len(self.qpt_vv_sizes)
     
     def load(self, fname: str):
@@ -364,6 +389,18 @@ class ToyMCDataset(Dataset):
             self.qpt_vv = f['qpt_v_normed'][:]
             self.qpt_vv_sizes = f['num_qpt_v'][:]
             self.pe_vv = f['pe_v'][:]
+            
+        # set the loss weighting factor matrix
+        self.weights = np.ones_like(self.pe_vv)
+        weight_cfg = self._cfg['dataset'].get('weight')
+        if weight_cfg:
+            print('[ToyMCDataset] weighting the loss using',weight_cfg.get('method'))
+            print('[ToyMCDataset] params:', weight_cfg)
+            if weight_cfg.get('method') == 'pe':
+                self.weights = self.pe_vv * weight_cfg.get('factor', 1.)
+            else:
+                raise NotImplementedError(f'The weight mode {weight_cfg.get("method")} is invalid.')
+            
         self.qpt_vv_toc = np.concatenate([[0], np.cumsum(self.qpt_vv_sizes)])
     
     def generate(self, n_tracks: int, fname: str, batch_size: int = None):
@@ -394,9 +431,8 @@ class ToyMCDataset(Dataset):
         tracks = self.toymc.gen_trajectories(n_tracks)
         
         curr = 0
-        pbar = tqdm(total=n_tracks//batch_size, desc='Generating ToyMCDataset', unit='batch')
+        pbar = tqdm(total=n_tracks, desc='Generating ToyMCDataset', unit='track')
         while curr < len(tracks):
-            pbar.update(1)
 
             dataset = h5py.File(fname, 'a')
 
@@ -419,7 +455,10 @@ class ToyMCDataset(Dataset):
             dataset['pe_v'].resize((dataset['pe_v'].shape[0] + pe_vv.shape[0]), axis=0)
             dataset['pe_v'][-pe_vv.shape[0]:] = pe_vv
 
+            pbar.update(batch_size)
+
             dataset.close()
+            
 
     def __getitem__(self, idx: int) -> dict:
         """Used by torch Dataset to get a single track.
@@ -439,14 +478,15 @@ class ToyMCDataset(Dataset):
         qpt_vv = self.qpt_vv[start:end]
         pe_v = self.pe_vv[idx]
         q_sizes = self.qpt_vv_sizes[idx]
+        weights = self.weights[idx]
 
         output = {
             'qpt_v':qpt_vv.tolist(),
             'pe_v':pe_v.tolist(),
             'q_sizes':q_sizes.tolist(),
-            # todo: weight?
+            'weights': weights.tolist()
         }
-        
+
         return output
     
     @staticmethod
@@ -461,4 +501,5 @@ class ToyMCDataset(Dataset):
             )
         output['pe_v'] = torch.as_tensor([data['pe_v'] for data in batch], dtype=torch.float32)
         output['q_sizes'] = torch.as_tensor([data['q_sizes'] for data in batch], dtype=torch.int32)
+        output['weights'] = torch.as_tensor([data['weights'] for data in batch], dtype=torch.float32)
         return output
