@@ -42,13 +42,12 @@ class SirenTrack(SirenVis):
         vis = self._inv_xform_vis(vis)          # vis in linear scale
         
         charge_size = batch['q_sizes']
-        # TODO (ys nov 20 2023): shouldnt be *too* expensive, but can do in dataloader
-        toc = np.concatenate([[0], np.cumsum(charge_size.to('cpu'))])
+        charge_csum = batch['charge_csum']
         
         pred = []
         charge_value = qpt_v[:,3]
         for i in range(len(charge_size)):
-            start, end = toc[i], toc[i+1]
+            start, end = charge_csum[i], charge_csum[i+1]
             sum_q_vis = (vis[start:end]*charge_value[start:end].unsqueeze(-1)).sum(axis=0)
             pred.append(sum_q_vis)
 

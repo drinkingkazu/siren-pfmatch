@@ -148,6 +148,7 @@ class SOptimizer:
         input['pe_v'] = input['pe_v'].to(self.device)
         input['q_sizes'] = input['q_sizes'].to(self.device)
         input['weights'] = input['weights'].to(self.device)
+        input['charge_csum'] = input['charge_csum'].to(self.device)
 
         # run model
         out = self.model(input)
