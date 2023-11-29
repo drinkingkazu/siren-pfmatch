@@ -77,7 +77,7 @@ class FlashHypothesis(torch.nn.Module):
         Returns hypothesized number of p.e. to be detected in each PMT
         """
 
-        self._dx_min, self.dx_max = self.dx_range(track)
+        self._dx_min, self._dx_max = self.dx_range(track)
         self._dx.data.clamp_(self._dx_min, self._dx_max)
         shift = torch.cat((self._dx, torch.zeros(3, device=track.device)), -1)
         shifted_track = torch.add(track, shift.expand(track.shape[0], -1))
