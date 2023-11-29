@@ -39,19 +39,23 @@ class SOptimizer:
         else:
             self._device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         
-        # essentials
+        # model & loss function
         self._model = SirenTrack(cfg).to(self._device)
         self._criterion = PoissonMatchLoss().to(self._device)
 
-        # training things
+        # init and split dataset
         dataset = ToyMCDataset(cfg)
+        val_split = cfg['train'].get('validation_split', 0.1)
+        print('[SOptimizer] Using validation split',val_split)
+        generator = torch.Generator().manual_seed(cfg['train'].get('seed', 0))
+        train, val = random_split(dataset, [1-val_split, val_split], generator=generator)
         self._dataloader = {
-            'train': DataLoader(dataset, collate_fn=dataset.collate_fn, **cfg['data']['loader']),
-            'val': None
-        }
+            'train': DataLoader(train, collate_fn=dataset.collate_fn, **cfg['data']['loader']),
+            'val': DataLoader(val, collate_fn=dataset.collate_fn, **cfg['data']['loader'])
+        }   
         self._opt, epoch = optimizer_factory(self._model.parameters(), cfg)
         
-        # resume training
+        # resume training?
         self.iteration, self.epoch = 0, 0
         if cfg['train'].get('resume') and cfg['model']['ckpt_file']:
             import re
@@ -70,24 +74,10 @@ class SOptimizer:
             if not hasattr(torch.optim.lr_scheduler,lrs['name']):
                 raise RuntimeError(f'Learning rate scheduler not available: {lrs["Name"]}')
                 
-            val_split = lrs.get('validation_split', 0.1)
-            n_val = int(len(dataset)*val_split)
-            n_train = len(dataset) - n_val
-            
-            if isinstance(cfg['ToyMC'], str):
-                seed = load_toymc_config(cfg['ToyMC'])['ToyMC'].get('NumpySeed', 0)
-            else:
-                seed = cfg.get('ToyMC', dict()).get('NumpySeed', 0)
-            generator = torch.Generator().manual_seed(seed)
-            train, val = random_split(dataset, [n_train, n_val], generator=generator)
-            self._dataloader = {
-                'train': DataLoader(train, collate_fn=dataset.collate_fn, **cfg['data']['loader']),
-                'val': DataLoader(val, collate_fn=dataset.collate_fn, **cfg['data']['loader'])
-            }   
             lrs_type = getattr(torch.optim.lr_scheduler,lrs['name'])
             lrs_args = lrs.get('parameters', dict())
-            print('[lr_scheduler] Using learning rate scheduler',lrs['name'])
-            print('[lr_scheduler] Using validation split',val_split,'for learning rate scheduler')
+            print('[lr_scheduler] learning rate scheduler',lrs['name'])
+            print('[lr_scheduler] parameters',lrs_args)
             self.scheduler = lrs_type(self._opt, **lrs_args)
 
 
@@ -95,12 +85,9 @@ class SOptimizer:
         train_cfg = cfg.get('train',dict())
         self.epoch_max = train_cfg.get('max_epochs',int(1e20))
         self.iteration_max = train_cfg.get('max_iterations',int(1e20))
+        self.validate_every_iterations = train_cfg.get('validate_every_iterations',len(self.dataloader['train']))
         self.save_every_iterations = train_cfg.get('save_every_iterations',-1)
         self.save_every_epochs = train_cfg.get('save_every_epochs',-1)
-
-        # save config
-        with open(os.path.join(self._logger.logdir,'train_cfg.yaml'), 'w') as f:
-            yaml.safe_dump(cfg, f)
 
 
     @property
@@ -167,20 +154,11 @@ class SOptimizer:
         """
         twait = time()
         stop_training = False            
+        val_loss = torch.nan
     
         # epoch loop
         while self.iteration < self.iteration_max and \
               self.epoch < self.epoch_max:  
-                  
-
-            if self.scheduler:
-                # validate every epoch
-                with torch.no_grad():
-                    val_loss = 0
-                    for batch in self.dataloader['val']:
-                        val_loss += self.step(batch)[-1]
-                    val_loss /= len(self.dataloader['val'])
-                self.scheduler.step(val_loss)
                   
             # iteration loop (batch loop)
             for batch in tqdm(self.dataloader['train'], desc='Epoch %-3d'%self.epoch, unit='batch'):
@@ -196,20 +174,22 @@ class SOptimizer:
                 self.opt.step()
                 ttrain = time() - ttrain
                 
-                
                 # log training parameters
-                cols = ['iter','epoch','loss','ttrain','twait', 'lr']
-                vals = [self.iteration, self.epoch, loss.item(), ttrain, twait, get_lr(self.opt)]
-
-                if self.scheduler:
-                    cols.append('val_loss')
-                    vals.append(val_loss)
+                cols = ['iter','epoch','loss','val_loss', 'lr', 'ttrain','twait']
+                vals = [self.iteration, self.epoch, loss.item(), val_loss, get_lr(self.opt), ttrain, twait]
                 self.logger.record(cols, vals)
 
                 twait = time()
 
                 # step the logger (pe spectrum)
                 self.logger.step(self.iteration, target, pred)
+                
+                # validate periodically after iterations (default 1 epoch)
+                if self.validate_every_iterations > 0 and \
+                    self.iteration % self.validate_every_iterations == 0:
+                    val_loss = self.validate()
+
+                    if self.scheduler: self.scheduler.step(val_loss)
                 
                 # save model params periodically after iterations
                 if self.save_every_iterations > 0 and \
@@ -242,3 +222,13 @@ class SOptimizer:
 
         filename = os.path.join(self.logger.logdir,'iteration-%06d-epoch-%04d.ckpt')
         self.model.save_state(filename % (self.iteration, self.epoch), self.opt, count)
+
+    def validate(self):
+        """Validates the model using the validation dataset."""
+
+        with torch.no_grad():
+            val_loss = 0
+            for batch in self.dataloader['val']:
+                val_loss += self.step(batch)[-1]
+            val_loss /= len(self.dataloader['val'])
+        return val_loss
