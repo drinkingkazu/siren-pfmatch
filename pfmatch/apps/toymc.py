@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-import yaml
 
 from photonlib import PhotonLib
 from slar.nets import SirenVis
 from pfmatch.algorithms import LightPath
 from pfmatch.datatypes import Flash, FlashMatchInput, QCluster
-#from pfmatch.plot import plot_qcluster
-#from .photonlib.photon_library import PhotonLibrary
-#from pfmatch.points import scatter_points
 
 class ToyMC():
     #TODO: Modify to work with photon library or siren input for visibility
@@ -40,7 +36,7 @@ class ToyMC():
                 assert i0 <= i1, f'Range low end {i0} must be equal or smaller than the high end {i1}'
                 self.num_tracks=[i0,i1]
             else:
-                raise ValueError(f'NumTracks argument must be an integero or "N-M" string format')
+                raise ValueError('NumTracks argument must be an integero or "N-M" string format')
         else:
             raise ValueError(f'NumTracks argument invalid: {num_tracks}')
 
@@ -125,7 +121,7 @@ class ToyMC():
 
         return result
 
-    def gen_trajectories(self, num_tracks, seed=123):
+    def gen_trajectories(self, num_tracks):
         """
         Generate N random trajectories.
         ---------
@@ -135,15 +131,39 @@ class ToyMC():
         Returns
             a list of trajectories, each is a pair of 3D start and end points
         """
-        #track_algo = 'random'
-
-        res = []
-
         #load detector dimension 
         xmin, ymin, zmin = self.detector['ActiveVolumeMin']
         xmax, ymax, zmax = self.detector['ActiveVolumeMax']
-        between = lambda min, max: min + (max - min) * self.rng.random()  # noqa: E731
+        
+        if self.track_algo == 'random-extended':
+            from pfmatch.utils import (generate_unbounded_tracks,
+                                       segment_intersection_point,
+                                       is_outside_boundary)
 
+            boundary = ((xmin, xmax), (ymin, ymax), (zmin, zmax))
+            tracks = generate_unbounded_tracks(num_tracks, boundary, self.rng)
+            mask = np.asarray([is_outside_boundary(point, boundary) for point in tracks.reshape(-1, 3)]).reshape(-1, 2)
+            one_in = mask.sum(axis=1) == 1
+            all_in = mask.sum(axis=1) == 0
+            tracks_both_in = tracks[all_in]
+            tracks_one_in = tracks[one_in]
+
+            for track,m in zip(tracks_one_in, mask[one_in]):
+                bad_pt = track[m].squeeze()
+                good_pt = track[~m].squeeze()
+                
+                intersection = segment_intersection_point(boundary, good_pt, bad_pt)
+                track[m] = intersection.reshape(-1, 3)
+                
+            out_tracks = np.vstack([tracks_both_in, tracks_one_in])
+
+            if len(out_tracks) < num_tracks:
+                return np.vstack([out_tracks, self.gen_trajectories(num_tracks-len(out_tracks))])
+             
+            return out_tracks.tolist()
+
+        res = []
+        between = lambda min, max: min + (max - min) * self.rng.random()  # noqa: E731
         for _ in range(num_tracks):
             if self.track_algo=="random":
                 start_pt = [between(xmin, xmax),
