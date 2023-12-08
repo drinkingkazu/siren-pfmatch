@@ -2,6 +2,7 @@ import os
 
 import h5py
 import numpy as np
+from pfmatch.utils.utils import load_toymc_config
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -33,6 +34,7 @@ class ToyMCDataset(Dataset):
         -------------------------
         no matter what:
         - `data.dataset.filename`: h5 file to load or save the dataset
+
         if the h5 file does not exist:
         - `data.dataset.size`: number of tracks to generate if the h5 file does not exist
         - `data.dataset.batch_size`: batch size for the dataloader
@@ -69,6 +71,9 @@ class ToyMCDataset(Dataset):
         print('[ToyMCDataset] dataset file',fname,'not found... generating via ToyMC')
         self._plib = PhotonLib.load(cfg)
         
+        if isinstance(cfg['ToyMC'], str):
+            cfg = cfg.copy()
+            cfg.update(load_toymc_config(cfg['ToyMC']))
         self._toymc = ToyMC(cfg, load_detector_config(cfg), self._plib)
         if self.n_tracks is None:
             raise RuntimeError(f'[ToyMCDataset] dataset file {fname} not found and size not specified')

@@ -1,5 +1,7 @@
-ToyMC: icarus_toymc_extended
-Detector: icarus_detector
+# if generating...
+# ToyMC: icarus_toymc_extended
+# Detector: icarus_detector
+
 photonlib:
   filepath: plib_icarus.h5
 
@@ -8,12 +10,11 @@ data:
     filepath: /sdf/home/y/youngsam/data/soptim_dataset_50k_uniform.h5
     size: 20000
   loader:
-    batch_size: 200
+    batch_size: 100
     drop_last: true
     num_workers: 4
     pin_memory: true
     shuffle: true
-  weight: 1.0
 
 device:
   type: cuda
@@ -22,7 +23,7 @@ logger:
   analysis:
     abs_bias:
     rel_bias:
-  dir_name: logs_soptim
+  dir_name: logs-soptim
   file_name: log.csv
   log_every_nsteps: 25
 
@@ -37,9 +38,15 @@ model:
     fix: true
 
 train:
-  optimizer_class: Adam
-  optimizer_param:
-    lr: 5.0e-05
+  validation_split: 0.1
+  seed: 123
+  max_epochs: 1000
+  save_every_epochs: 5
+  resume: false
+  optimizer: 
+    name: Adam
+    parameters:
+      lr: 5.0e-05
   lr_scheduler:
     name: ReduceLROnPlateau
     parameters:
@@ -48,11 +55,6 @@ train:
       patience: 10
       threshold: 0.1
       threshold_mode: rel
-    validation_split: 0.1
-  max_epochs: 1000
-  optimizer_class: Adam
-  resume: false
-  save_every_epochs: 25
 
 transform_vis:
   eps: 1.0e-07

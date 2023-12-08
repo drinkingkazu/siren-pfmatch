@@ -208,10 +208,12 @@ class CSVLogger:
             created from the analysis module and run during the training.
         '''
         
+        self._cfg = cfg
         log_cfg = cfg.get('logger',dict())
-        self._logdir  = self.make_logdir(log_cfg.get('dir_name','logs'))
-        self._logfile = os.path.join(self._logdir, cfg.get('file_name','log.csv'))
+        self._logdir  = self.get_logdir(log_cfg.get('dir_name','logs'))
+        self._logfile = os.path.join(self._logdir, log_cfg.get('file_name','log.csv'))
         self._log_every_nsteps = log_cfg.get('log_every_nsteps',1)
+        self._logdir_exists = False
 
         print('[CSVLogger] output log file:',self._logfile)
         print(f'[CSVLogger] recording a log every {self._log_every_nsteps} steps')
@@ -234,9 +236,9 @@ class CSVLogger:
     def logdir(self):
         return self._logdir
         
-    def make_logdir(self, dir_name):
+    def get_logdir(self, dir_name):
         '''
-        Create a log directory
+        Get a log directory
 
         Parameters
         ----------
@@ -254,9 +256,18 @@ class CSVLogger:
         if len(versions):
             ver = max(versions)+1
         logdir = os.path.join(dir_name,'version-%02d' % ver)
-        os.makedirs(logdir)
 
         return logdir
+    
+    def init_logdir(self):
+        """
+        Initialize the log directory.
+        """
+        self._logdir_exists = True
+        os.makedirs(self.logdir)
+
+        with open(os.path.join(self.logdir,'train_cfg.yaml'), 'w') as f:
+            yaml.safe_dump(self._cfg, f)
 
     def record(self, keys : list, vals : list):
         '''
@@ -306,6 +317,9 @@ class CSVLogger:
         Function to write the key-value pairs provided through the record function
         to an output log file.
         '''
+        if not self._logdir_exists:
+            self.init_logdir()
+        
         if self._str is None:
             self._fout=open(self._logfile,'w')
             self._str=''
