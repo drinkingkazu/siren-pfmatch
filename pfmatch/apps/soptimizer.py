@@ -50,8 +50,8 @@ class SOptimizer:
         generator = torch.Generator().manual_seed(cfg['train'].get('seed', 0))
         train, val = random_split(dataset, [1-val_split, val_split], generator=generator)
         self._dataloader = {
-            'train': DataLoader(train, collate_fn=dataset.collate_fn, **cfg['data']['loader']),
-            'val': DataLoader(val, collate_fn=dataset.collate_fn, **cfg['data']['loader'])
+            'train': DataLoader(train, collate_fn=dataset.collate_fn, generator=generator, **cfg['data']['loader']),
+            'val': DataLoader(val, collate_fn=dataset.collate_fn, generator=generator, **cfg['data']['loader'])
         }   
         self._opt, epoch = optimizer_factory(self._model.parameters(), cfg)
         
@@ -207,7 +207,7 @@ class SOptimizer:
             self.epoch += 1
             
             # save model params periodically after epochs
-            if (self.save_every_epochs*self.epoch) > 0 and self.epoch % self.save_every_epochs == 0:
+            if (self.save_every_epochs*self.epoch) > 0 and self.epoch+1 % self.save_every_epochs == 0:
                 self.save(count=self.iteration/len(self.dataloader['train'].dataset))
             
         print('[SOptimizer] Stopped training at iteration',self.iteration,'epochs',self.epoch)
