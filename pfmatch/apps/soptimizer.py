@@ -207,7 +207,7 @@ class SOptimizer:
             self.epoch += 1
             
             # save model params periodically after epochs
-            if (self.save_every_epochs*self.epoch) > 0 and self.epoch+1 % self.save_every_epochs == 0:
+            if (self.save_every_epochs*self.epoch) > 0 and self.epoch % self.save_every_epochs == 0:
                 self.save(count=self.iteration/len(self.dataloader['train'].dataset))
             
         print('[SOptimizer] Stopped training at iteration',self.iteration,'epochs',self.epoch)
