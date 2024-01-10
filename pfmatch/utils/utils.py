@@ -136,7 +136,7 @@ def generate_unbounded_tracks(N, boundary, extension_factor=0.2, rng=np.random):
     
     return tracks.T
 
-def find_intersection_with_boundary(boundary, point_inside, point_outside):
+def segment_intersection_point(boundary, point_inside, point_outside):
     """
     Given a boundary and two points of a line segment that crosses the boundary of a cube,
     this function finds the intersection point of the line segment with the boundary.
@@ -154,7 +154,7 @@ def find_intersection_with_boundary(boundary, point_inside, point_outside):
     direction = point_inside - point_outside
 
     # Initialize intersection point
-    intersection_point = point_outside
+    intersection_points = []
 
     # Check for intersection with each face of the boundary box
     for i, (min_val, max_val) in enumerate(boundary):
@@ -174,11 +174,12 @@ def find_intersection_with_boundary(boundary, point_inside, point_outside):
             # Check if the intersection point is within the boundary on the other two axes
             if all(min_val <= intersection_test[j] <= max_val for j, (min_val, max_val) in enumerate(boundary) if j != i):
                 intersection_point = intersection_test
-                return intersection_point
+                intersection_points.append(intersection_point)
+                # return intersection_point
 
-    return intersection_point
+    return intersection_points
 
-def is_outside(point, boundary):
+def is_outside_boundary(point, boundary):
     """
     Checks if a point is outside the boundary.
     
