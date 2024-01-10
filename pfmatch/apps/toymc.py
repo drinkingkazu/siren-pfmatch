@@ -141,7 +141,7 @@ class ToyMC():
                                        is_outside_boundary)
 
             boundary = ((xmin, xmax), (ymin, ymax), (zmin, zmax))
-            tracks = generate_unbounded_tracks(num_tracks, boundary, self.rng)
+            tracks = generate_unbounded_tracks(num_tracks, boundary, extension_factor=0.5, rng=self.rng)
             mask = np.asarray([is_outside_boundary(point, boundary) for point in tracks.reshape(-1, 3)]).reshape(-1, 2)
             one_in = mask.sum(axis=1) == 1
             all_in = mask.sum(axis=1) == 0
@@ -152,7 +152,7 @@ class ToyMC():
                 bad_pt = track[m].squeeze()
                 good_pt = track[~m].squeeze()
                 
-                intersection = segment_intersection_point(boundary, good_pt, bad_pt)
+                intersection = segment_intersection_point(boundary, good_pt, bad_pt)[0]
                 track[m] = intersection.reshape(-1, 3)
                 
             out_tracks = np.vstack([tracks_both_in, tracks_one_in])
