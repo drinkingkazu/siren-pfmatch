@@ -58,16 +58,16 @@ class LightPath():
         direct = (pt2 - pt1) / dist
         weight = (dist - int(dist / self.gap) * self.gap)        
         num_pts = num_div if torch.allclose(weight.float(),torch.as_tensor(0.)) else num_div+1
-        qpt_v = torch.zeros(size=(num_pts,pt1.shape[0]+1),dtype=pt1.dtype,device=pt1.device) 
-        for div_idx in range(num_pts):
-            qpt = qpt_v[div_idx]
-            if div_idx < num_div:
-                qpt[:-1] = pt1 + direct * (self.gap * div_idx + self.gap / 2.)
-                qpt[-1 ] = self.light_yield * self.dEdxMIP * self.gap
-            else:
-                qpt[:-1] = pt1 + direct * (self.gap * div_idx + weight / 2.)
-                qpt[-1 ] = self.light_yield * self.dEdxMIP * weight
 
+        qpt_v = torch.zeros(size=(num_pts, pt1.shape[0]+1), dtype=pt1.dtype, device=pt1.device)
+        offsets = torch.arange(num_pts, dtype=pt1.dtype, device=pt1.device).unsqueeze(1) * self.gap
+        offsets += self.gap / 2.0  # for the case of div_idx < num_div
+        q = torch.full((num_pts,), self.light_yield * self.dEdxMIP * self.gap, dtype=pt1.dtype, device=pt1.device)
+        if num_pts > num_div:
+            offsets[num_div:] += (weight - self.gap) / 2.0
+            q[num_div:] = self.light_yield * self.dEdxMIP * weight
+        qpt_v[:, :-1] = pt1 + direct * offsets
+        qpt_v[:, -1] = q
         return qpt_v
         
     def track_to_qpoints(self, track: torch.Tensor) -> torch.Tensor:
