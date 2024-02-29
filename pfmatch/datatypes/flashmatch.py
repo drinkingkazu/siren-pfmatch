@@ -21,6 +21,21 @@ class FlashMatchInput:
         # True matches, an array of integer-pairs.
         self.true_match = []
 
+    @property
+    def dx_truth(self):
+        dx_truth = torch.tensor([
+            qclust.xmin_true - qclust.qpt_v[:,0].min()
+            for qclust in self.qcluster_v
+        ])
+        return dx_truth
+
+    def dx_ranges(self, x_min, x_max):
+        dx_ranges = torch.tensor([
+            [x_min - qclust.qpt_v[:,0].min(), x_max - qclust.qpt_v[:,0].max()]
+            for qclust in self.qcluster_v
+        ])
+        return dx_ranges
+
     def shift_to_center(self,plib:PhotonLib|SirenVis):
         for q in self.qcluster_v: q.shift_to_center(plib)
 

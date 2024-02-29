@@ -1,4 +1,5 @@
 from __future__ import annotations
+from itertools import compress
 
 import torch
 from photonlib import PhotonLib
@@ -88,3 +89,177 @@ class FlashHypothesis(torch.nn.Module):
             pe_v = torch.sum(self.plib._inv_xform_vis(self.plib(x))*(shifted_track[:, 3].unsqueeze(-1)), axis = 0)
             return pe_v
 
+class PLibPrediction(torch.autograd.Function):
+    '''
+    Autograd function for PhotonLib. Apply for batch input of multiple charge
+    clusters.
+    '''
+    
+    @staticmethod
+    def forward(ctx, dx, batch, sizes, plib):
+        coords = batch[:,:3].clone()
+        coords[:,0] += dx.repeat_interleave(sizes)
+    
+        q = batch[:,3]
+        
+        vox_ids = plib.meta.coord_to_voxel(coords)
+        sizes = list(sizes.cpu())
+        
+        ctx.save_for_backward(vox_ids, q)
+        ctx.plib = plib
+        ctx.sizes = sizes
+        
+        split_vis_q = torch.split(plib.vis[vox_ids]*q.unsqueeze(-1), sizes)
+        
+        pred = torch.stack([vis_q.sum(axis=0) for vis_q in split_vis_q])
+        return pred
+            
+    @staticmethod
+    def backward(ctx, grad_output):
+        vox_ids, q = ctx.saved_tensors
+        plib = ctx.plib
+        sizes = ctx.sizes
+        
+        grad_pred_x = (plib.vis[vox_ids+1] - plib.vis[vox_ids])
+        grad_pred_x /= plib.meta.voxel_size[0]
+        grad_pred_x *= q.unsqueeze(-1)
+        
+        grad_pairs = zip(
+            torch.split(grad_pred_x, sizes),
+            grad_output,
+        )
+        
+        grad_x = torch.cat([
+            grad_in.sum(axis=0).matmul(grad_out).unsqueeze(-1)
+            for grad_in, grad_out in grad_pairs
+        ])
+            
+        return grad_x, None, None, None
+
+class MultiFlashHypothesis(torch.nn.Module):
+    '''
+    Flash hypothesis for batch input that contains multiple charge clusters.
+    Each charge cluster has its own optimizible x-offset.
+
+    Arguments
+    ---------
+    vis_model : PhotonLib | SirenVis
+        Visibilty model in form of PhotonLib (LUT) or SirenVis.
+
+    dx_ranges: array_like (N, 2)
+        List of x-offset ranges for _N_ flash hypothesis.
+
+    dx_init: array_like (N,), optional
+        Initial x-offset for _N_ flashes. Default: 0.
+        `len(dx_init) == len(dx_ranges)`
+    '''
+    def __init__(self, 
+                 vis_model : PhotonLib | SirenVis, 
+                 dx_ranges, 
+                 dx_init=None,
+                 ):
+        super().__init__()
+        self.vis_model = vis_model
+        self._dx_ranges = torch.as_tensor(dx_ranges)
+
+        if dx_init is None:
+            dx_init = torch.zeros(len(self))
+
+        dx_init = torch.as_tensor(dx_init)
+        if len(dx_init) != len(self):
+            raise ValueError(f'len(dx_init) != len(dx_ranges)')
+
+        self.pars = torch.nn.ParameterList([
+            torch.nn.Parameter(dx0) for dx0 in dx_init
+        ])
+
+    def __len__(self):
+        return len(self._dx_ranges)
+    
+    def mask_dx(self, mask=None, clamp=False):
+        '''
+        Offset parameters with optional mask.
+
+        Arguments
+        ---------
+        mask: Tensor(bool), optional
+            Mask to be applied. Default: None.
+            If `None`, returns all parameters.
+
+        clamp: bool, optional
+            Clamp offset parameters within ``_dx_ranges``.
+            Default: `False`
+
+        Returns
+        -------
+        dx: Tensor, (_N_,)
+            Offset parameters. If masked, `N <= len(self)`.
+            Otherwise, `N == len(self)`.
+        '''
+        dx_ranges = self._dx_ranges
+        if mask is None:
+            pars = torch.stack(list(self.pars))
+        else:
+            dx_ranges = dx_ranges[mask]
+            pars = torch.stack(list(compress(self.pars, mask)))
+            
+        if clamp:
+            pars = pars.clamp(*dx_ranges.T)
+            
+        return pars
+               
+    @property
+    def dx(self):
+        '''
+        Offset parameters without mask and clamp.
+        '''
+        return self.mask_dx()
+    
+    @dx.setter
+    def dx(self, values):
+        if len(self.pars) != len(values):
+            raise ValueError(f'len(values) != len(pars)')
+
+        for p, v in zip(self.pars, values):
+            p.data.fill_(v)
+
+    def forward(self, batch, sizes, mask=None):
+        '''
+        Predict optical output for batch input of charge clusters.
+
+        Arguments
+        ---------
+        batch: Tensor
+            A single tensor of all charge cluster points. May contains multiple
+            clusters.
+
+        sizes: Tensor
+            Number of points for each charge clusters.
+            `len(sizes)` represents the number of clusters in `batch`.
+            `sum(sizes) == len(batch)` gives the total number of charge points.
+
+        mask: Tensor(bool), optional
+            Mask to be applied. Default `None`.
+            If mask is not set, all clusters in `batch` are evalulated.
+            Otherwise, `len(mask) == len(sizes)`, only the masked clusters are
+            included.
+
+        Returns
+        -------
+        output: Tensor, (_N_,_M_)
+            Optical output prediction with the current x-offsets.
+            If masked, `N` is the number of masked clusters. Otherwise `N ==
+            len(self)` for all clusters.
+            `M` is the number of the PMTs.
+        '''
+
+        dx = self.mask_dx(mask, clamp=True)
+        
+        if mask is not None:
+            batch = batch[mask.repeat_interleave(sizes)]
+            sizes = sizes[mask]
+            
+        plib = self.vis_model
+        output = PLibPrediction.apply(dx, batch, sizes, plib)
+
+        return output
