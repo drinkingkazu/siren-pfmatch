@@ -25,10 +25,9 @@ class F(torch.autograd.Function):
         vox_ids = ctx.plib.meta.coord_to_voxel(track[:,:3])
         
         grad_plib = (ctx.plib.vis[vox_ids+1] - ctx.plib.vis[vox_ids]) / ctx.plib.meta.voxel_size[0]
-        grad_input = torch.matmul(grad_plib, grad_output.unsqueeze(-1))
+        grad_input = torch.matmul(grad_plib*track[:,3].unsqueeze(-1), grad_output.unsqueeze(-1))
         pad = torch.zeros(grad_input.shape[0], 3, device=grad_output.device)
         return torch.cat((grad_input,pad), -1), None
-
 
 class FlashHypothesis(torch.nn.Module):
 
