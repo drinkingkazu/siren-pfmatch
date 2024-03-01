@@ -61,18 +61,27 @@ class XBatchOptimizer:
 
         # -------------------------------------------------------
         # Do matching.
-        # Otherwise assume charge-flash are already matched.
+        # If `False`, assume charge-flash are already matched.
         # -------------------------------------------------------
-        Match: False
+        Match: True 
 
         # -------------------------------------------------------
-        # Perform loss scan in `LossScanStepSize`
-        # 1. determine initial x-offset.
-        # 2. for matching, keep pairs with loss < `PrefilterLoss`
-        #    or keep the best `PrefilterTopK`-th pairs.
+        # Perform loss scan with `LossScanStepSize` to determine 
+        # initial x-offset. `Prefit` is set to `True` if both 
+        # `Match` and `Prefilter` are `True`.
         # -------------------------------------------------------
         Prefit: True
         LossScanStepSize: 1.
+
+        # -------------------------------------------------------
+        # Prefilter pairs for matching only.
+        # Not use if `Match: False`.
+        # Keep pairs with loss < `PrefilterLoss` 
+        # or the best `PrefilterTopK`-th pairs.
+        # It is possible to run prefit without prefilter, which 
+        # keeps all possible pairs w/ initial offset estimation.
+        # -------------------------------------------------------
+        Prefilter: True
         PrefilterTopK: 2
         PrefilterLoss: 200
 
@@ -99,8 +108,13 @@ class XBatchOptimizer:
         self.prefilter_topk = this_cfg.get('PrefilterTopK', 2)
         self.prefilter_loss = this_cfg.get('PrefilterLoss', 200)
         self.do_prefit = this_cfg.get('Prefit', True)
+        self.do_prefilter = this_cfg.get('Prefilter', True)
         self.do_match = this_cfg.get('Match', False)
         self.verbose = this_cfg.get('Verbose', False)
+
+        # For mathcing w/ prefilter, do prefit by default
+        if self.do_match and self.do_prefilter:
+            self.do_prefit = True
 
         self.crit = PoissonMatchLoss()
 
@@ -394,9 +408,17 @@ class XBatchOptimizer:
                 Initial guess of dx offets from loss scan for the potential pairs.
                 Same lenght as `pairs`.
             '''
+        if not self.do_prefilter:
+            self.print('[Tips] Set "Prefilter: True" for faster running time')
+
         t_start = time.time()
         threshold = self.prefilter_loss
         top_k = self.prefilter_topk
+
+        # effectively no prefilter
+        if not self.do_prefilter:
+            threshold = torch.inf
+            top_k = None
 
         pairs, dx_init = [], []
         for i_q, qpt_v in enumerate(qclusters):
@@ -703,10 +725,12 @@ class XBatchOptimizer:
             dx_init = prefit['dx_init']
             output['prefit'] = prefit
             output['tspent'] += prefit['tspent']
+        else:
+            self.print('[Tips] Set "Prefit: True" for better convergence')
 
         if self.do_match and not self.do_prefit:
             # take all pair combinations
-            self.print('Matching without prefit could be SLOW !!!') 
+            self.print('[Tips] Set "Prefilter: True" for faster running time')
             n_q, n_f = len(qclusters), len(flashes)
             pairs = list(product(range(n_q), range(n_f)))
 
