@@ -222,6 +222,57 @@ class MultiFlashHypothesis(torch.nn.Module):
         for p, v in zip(self.pars, values):
             p.data.fill_(v)
 
+    @staticmethod
+    def apply(dx, batch, sizes, vis_model):
+        '''
+        An auxiliary function to apply x-offset to multiple charge clusters,
+        either using `PhotonLib` or `SirenVis`.
+
+        Arguments
+        ---------
+
+        dx: tensor
+            Offset in x to be applied to the charge clusters.
+            One offset per clusters.
+
+        batch: tensor
+            A sigle tensor of the charge points `(x,y,z,q)` for all clusters.
+
+        sizes: tensor
+            Number of charge points per cluster.
+            `len(sizes)` gives the number of charge clusters, and `sum(sizes)
+            == len(batch)` represents the total number of charge points. 
+
+        vis_model: PhotonLib | SirenVis
+            Visibility model. The gradient w.r.t. dx is provided by
+            `PLibPrediction` in case of `PhotonLib`.
+
+        Returns
+        -------
+        output: Tensor, (_N_,_M_)
+            Optical output prediction with the current x-offsets.
+            If masked, `N` is the number of masked clusters. Otherwise `N ==
+            len(self)` for all clusters.
+            `M` is the number of the PMTs.
+
+        '''
+        if isinstance(vis_model, PhotonLib):
+            output = PLibPrediction.apply(dx, batch, sizes, vis_model)
+
+        elif isinstance(vis_model, SirenVis):
+            coords = batch[:,:3].clone()
+            coords[:,0] += dx.repeat_interleave(sizes)
+
+            q = batch[:,3]
+            _sizes = list(sizes.cpu())
+            vis_q = vis_model.visibility(coords) * q.unsqueeze(-1)
+            output = torch.stack([
+                blk.sum(axis=0) for blk in torch.split(vis_q, _sizes)
+            ])
+        else:
+            raise TypeError('Unsupported type(vis_mod)', type(vis_model))
+        return output
+        
     def forward(self, batch, sizes, mask=None):
         '''
         Predict optical output for batch input of charge clusters.
@@ -229,13 +280,8 @@ class MultiFlashHypothesis(torch.nn.Module):
         Arguments
         ---------
         batch: Tensor
-            A single tensor of all charge cluster points. May contains multiple
-            clusters.
-
         sizes: Tensor
-            Number of points for each charge clusters.
-            `len(sizes)` represents the number of clusters in `batch`.
-            `sum(sizes) == len(batch)` gives the total number of charge points.
+            See input of ``self.apply()``.
 
         mask: Tensor(bool), optional
             Mask to be applied. Default `None`.
@@ -246,10 +292,7 @@ class MultiFlashHypothesis(torch.nn.Module):
         Returns
         -------
         output: Tensor, (_N_,_M_)
-            Optical output prediction with the current x-offsets.
-            If masked, `N` is the number of masked clusters. Otherwise `N ==
-            len(self)` for all clusters.
-            `M` is the number of the PMTs.
+            See output of ``self.apply()``.
         '''
 
         dx = self.mask_dx(mask, clamp=True)
@@ -258,7 +301,6 @@ class MultiFlashHypothesis(torch.nn.Module):
             batch = batch[mask.repeat_interleave(sizes)]
             sizes = sizes[mask]
             
-        plib = self.vis_model
-        output = PLibPrediction.apply(dx, batch, sizes, plib)
+        output = self.apply(dx, batch, sizes, self.vis_model)
 
         return output

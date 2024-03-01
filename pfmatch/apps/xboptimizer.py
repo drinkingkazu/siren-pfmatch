@@ -9,9 +9,7 @@ from tqdm.auto import trange
 from photonlib import PhotonLib
 from slar.nets import SirenVis
 from pfmatch.datatypes import QCluster, Flash, FlashMatchInput
-from pfmatch.algorithms import (
-    PoissonMatchLoss, MultiFlashHypothesis, PLibPrediction
-)
+from pfmatch.algorithms import PoissonMatchLoss, MultiFlashHypothesis
 from pfmatch.utils import scheduler_factory
 from scipy.optimize import linear_sum_assignment
 
@@ -182,7 +180,7 @@ class XBatchOptimizer:
         batch = qpt_v.repeat(n_steps, 1)
 
         plib = self._vis_model
-        out_pe = PLibPrediction.apply(dx, batch, sizes, plib)
+        out_pe = MultiFlashHypothesis.apply(dx, batch, sizes, plib)
 
         if tgt_pe.ndim == 1: 
             loss = self.crit(out_pe, tgt_pe)
@@ -551,7 +549,10 @@ class XBatchOptimizer:
         model = MultiFlashHypothesis(
             self._vis_model, batch['dx_ranges'], dx_init,
         ).to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=self.initial_lr)
+        # Note: avoid putting `model.parameters()` in the optimizer,
+        # as the `SirenVis` paramters may also be updated if not frozen.
+        # We only want dx as optimizible parameters.
+        optimizer = torch.optim.Adam(model.pars, lr=self.initial_lr)
         scheduler = scheduler_factory(
             optimizer, self.cfg.get('Scheduler'), self.verbose
         )
