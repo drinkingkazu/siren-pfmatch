@@ -4,7 +4,7 @@ import time
 import numpy as np
 import torch
 
-from itertools import compress, product
+from itertools import compress
 from tqdm.auto import trange
 from photonlib import PhotonLib
 from slar.nets import SirenVis
@@ -193,8 +193,10 @@ class XBatchOptimizer:
         sizes = torch.full((n_steps,), len(qpt_v), device=self.device)
         batch = qpt_v.repeat(n_steps, 1)
 
-        plib = self._vis_model
-        out_pe = MultiFlashHypothesis.apply(dx, batch, sizes, plib)
+        with torch.no_grad():
+            out_pe = MultiFlashHypothesis.apply(
+                dx, batch, sizes, self._vis_model
+            )
 
         if tgt_pe.ndim == 1: 
             loss = self.crit(out_pe, tgt_pe)
@@ -318,14 +320,16 @@ class XBatchOptimizer:
             batch['sizes'] = sizes
             repeats = torch.ones(len(qclusters), dtype=int, device=device)
         else:
-            batch['flashes'] = torch.stack([flashes[i_f] for __,i_f in pairs])
+            sel_q, sel_f = pairs
+            batch['flashes'] = flashes[sel_f]
 
             repeats = torch.zeros(len(qclusters), dtype=int, device=device)
-            for i_q, __ in pairs:
-                repeats[i_q] += 1 
-            batch['qclusters'] = torch.cat([
-                qcluster.repeat(r,1) for qcluster, r in zip(qclusters, repeats)
-            ])
+
+            batch_q = []
+            for i_q in sel_q:
+                repeats[i_q] += 1
+                batch_q.append(qclusters[i_q])
+            batch['qclusters'] = torch.cat(batch_q)
             batch['sizes'] = sizes.repeat_interleave(repeats)
 
         batch['dx_ranges'] = dx_ranges.repeat_interleave(repeats, dim=0)
@@ -360,6 +364,9 @@ class XBatchOptimizer:
         ''' 
 
         t_start = time.time()
+
+        self.print(f'[prefit] scan loss for {len(qclusters)} clusters, '
+                   f'{len(flashes)} flashes')
 
         #TODO(2024-02-26 kvt) check len()
     
@@ -409,9 +416,10 @@ class XBatchOptimizer:
                 Same lenght as `pairs`.
             '''
         if not self.do_prefilter:
-            self.print('[Tips] Set "Prefilter: True" for faster running time')
+            self.print('[prefilter] set "Prefilter: True" for faster running time')
 
         t_start = time.time()
+
         threshold = self.prefilter_loss
         top_k = self.prefilter_topk
 
@@ -420,25 +428,51 @@ class XBatchOptimizer:
             threshold = torch.inf
             top_k = None
 
-        pairs, dx_init = [], []
+        self.print(f'[prefilter] threshold={threshold}, top_k={top_k}')
+        self.print(f'[prefilter] scan loss for {len(qclusters)} clusters, '
+                   f'{len(flashes)} flashes')
+
+        loss_matrix = torch.empty(
+            (len(qclusters), len(flashes)), device=self.device
+        )
+        dx_matrix = torch.empty_like(loss_matrix)
+
         for i_q, qpt_v in enumerate(qclusters):
             dx_step, loss_step = self.scan_loss(qpt_v, flashes)
 
             loss_min, step_idx = loss_step.min(axis=1)
 
-            selected = torch.where(loss_min<threshold)[0]
-            if len(selected) == 0:
-                selected = loss_min.argsort()[:top_k]
+            loss_matrix[i_q] = loss_min
+            dx_matrix[i_q] = dx_step[step_idx]
 
-            for i_f in selected:
-                pairs.append((i_q, i_f.item()))
-                dx_init.append(dx_step[step_idx[i_f]].item())
+        # select pairs below prefilter threshold 
+        sel = loss_matrix < threshold
 
+        # select top-k if no pair below threshold
+        topk_q = torch.where(sel.count_nonzero(axis=1)==0)[0]
+        topk_f = torch.where(sel.count_nonzero(axis=0)==0)[0]
+
+        for i_q in topk_q:
+            i_f = loss_matrix[i_q].argsort()[:top_k]
+            sel[i_q, i_f] = True
+
+        for i_f in topk_f:
+            i_q = loss_matrix[:,i_f].argsort()[:top_k]
+            sel[i_q, i_f] = True
+
+        # make pairs
+        pairs = torch.where(sel)
+        dx_init = dx_matrix[pairs]
+
+        self.print(
+            f'[prefilter] select {len(dx_init)}/{loss_matrix.numel()} pairs'
+        )
         t_stop = time.time()
 
         output = {
             'pairs': pairs,
-            'dx_init': torch.tensor(dx_init, device=self.device),
+            'dx_init': dx_init,
+            'loss_matrix': loss_matrix,
             'tspent': t_stop - t_start,
         }
         return output
@@ -484,10 +518,10 @@ class XBatchOptimizer:
         # fill loss matrix
         n_q = batch['n_qcluster']
         n_f = batch['n_flash']
-        pairs = torch.tensor(batch['pairs']).T
+        pairs = torch.stack(batch['pairs']).cpu()
 
         loss_matrix = torch.full((n_q, n_f), torch.inf)
-        loss_matrix[pairs[0], pairs[1]] = output['loss_best']
+        loss_matrix[pairs[0],pairs[1]] = output['loss_best']
 
         # bipartite match
         try:
@@ -498,8 +532,10 @@ class XBatchOptimizer:
 
         # fill matched dx and pe 
         if idx is not None:
-            # mapping from (i_q, i_f) -> pair index
-            m_pairs = torch.sparse_coo_tensor(pairs, torch.arange(len(pairs.T)))
+            # mapping from (i_q, i_f) -> 1-dim pair index 
+            m_pairs = torch.sparse_coo_tensor(
+                pairs, torch.arange(pairs.size(1))
+            )
 
             # selected (matched) pairs 
             sel = torch.tensor([m_pairs[i_q,i_f] for i_q,i_f in zip(*idx)])
@@ -571,6 +607,8 @@ class XBatchOptimizer:
         model = MultiFlashHypothesis(
             self._vis_model, batch['dx_ranges'], dx_init,
         ).to(device)
+        self.print(f'[fit] Optmization for {len(model)} hypotheses')
+
         # Note: avoid putting `model.parameters()` in the optimizer,
         # as the `SirenVis` paramters may also be updated if not frozen.
         # We only want dx as optimizible parameters.
@@ -726,13 +764,17 @@ class XBatchOptimizer:
             output['prefit'] = prefit
             output['tspent'] += prefit['tspent']
         else:
-            self.print('[Tips] Set "Prefit: True" for better convergence')
+            self.print('[fit] set "Prefit: True" for better convergence')
 
         if self.do_match and not self.do_prefit:
             # take all pair combinations
-            self.print('[Tips] Set "Prefilter: True" for faster running time')
+            self.print('[fit] set "Prefilter: True" for faster running time')
             n_q, n_f = len(qclusters), len(flashes)
-            pairs = list(product(range(n_q), range(n_f)))
+            pairs = torch.cartesian_prod(
+                torch.arange(n_q, device=self.device), 
+                torch.arange(n_f, device=self.device)
+            )
+            pairs = pairs[:,0], pairs[:,1]
 
         # make batch input and exe c_fit()
         batch = self.make_input_batch(
