@@ -38,6 +38,15 @@ class XBatchOptimizer:
     ```
     XBatchOptimizer:
         # -------------------------------------------------------
+        # Input Data Key (Optinal)
+        # Default: {'qclsuter':'qcluster_v', 'flash':'pe_v'}
+        # Alternatives are 'raw_qcluster_v', 'pe_true_v'
+        # -------------------------------------------------------
+        # DataKey: 
+        #    qcluster: qcluster_v
+        #    flash: pe_v 
+        
+        # -------------------------------------------------------
         # Optimization parameters
         # -------------------------------------------------------
         InitLearningRate: 1.0
@@ -49,7 +58,6 @@ class XBatchOptimizer:
         StopPatience: 20
         StopDeltaXMin: 0.1
         StopDeltaLoss: 0.001
-        
         
         # -------------------------------------------------------
         # Learning Rate Scheduler (Optional)
@@ -115,6 +123,10 @@ class XBatchOptimizer:
         # For mathcing w/ prefilter, do prefit by default
         if self.do_match and self.do_prefilter:
             self.do_prefit = True
+
+        # default data keys
+        self.data_key = {'qcluster':'qcluster_v', 'flash':'pe_v'}
+        self.data_key.update(this_cfg.get('DataKey', {}))
 
         self.crit = PoissonMatchLoss()
 
@@ -209,67 +221,64 @@ class XBatchOptimizer:
 
         return dx, loss
 
-    def make_input_tensors(self, input : FlashMatchInput, flash_key='pe_v'):
+    def collate_input(self, input: FlashMatchInput):
         '''
-        Prepare input tesnors from FlashMatchInput instance.
+        Collation of input data.
+        See ``FlashMatchInput.collate_q` and ``FlashMatchInput.collate_f``.
 
         Arguments
         ---------
-        input: FlashMatchInput
-            
-        flash_key: str, optional 
-            Data key for flash tesnor. Default: `pe_v`.
-            Alternative option is `pe_true_v` For MC data without p.e. fluctuation.
+        input : FlashMatchInput
+            An instance of ``FlashMatchInput``.
 
         Returns
         -------
-        qclusters: list(Tensor)
-            List of charge cluster points `qpt_v`. Each element represents a
-            cluster of charge share the same x-offset.
+        data : dict
+            Collated data in a dictonary.
 
-        flashes: Tensor
-            Flash values from input, stacked to a 2-dim tensor.
-            `len(flashes) == len(input.flash_v)`
+            'qclusters' : list(tensor)
+                List of position and charge point for all clusters.
 
-        dx_ranges: Tensor
-            Possible ranges of x-offset for qclusters.
-            `len(dx_ranges) == len(qclusters)`
+            'flashes' : tensor
+                Flashes (p.e.) as a 2-dim tensor (n_flashes, n_pmts)
+
+            'dx_ranges' : tensor
+                Ranges of x-offset for all clusters.,
         '''
+        key_q = self.data_key['qcluster']
+        key_f = self.data_key['flash']
         device = self.device
-        qclusters = [qcluster.qpt_v.to(device) for qcluster in input.qcluster_v]
-        flashes = torch.stack([
-            getattr(flash, flash_key).to(device) for flash in input.flash_v
-        ])
-        dx_ranges = input.dx_ranges(*self.x_ranges).to(device)
-        return qclusters, flashes, dx_ranges
 
-    def make_input_batch(self, 
-                         input : FlashMatchInput | tuple, 
-                         flash_key='pe_v',
-                         pairs=None):
+        self.print(f'[collate_input] data keys ({key_q}, {key_f})')
+        data = dict(
+            qclusters=input.collate_q(device=device, key=key_q),
+            flashes=input.collate_f(device=device, key=key_f),
+            dx_ranges=input.dx_ranges(*self.x_ranges).to(device),
+        )
+        return data
 
+    def make_input_batch(self, input : FlashMatchInput | dict, pairs=None):
         '''
         Prepare batch input for ``_fit()`` function. 
 
         Arguments
         ---------
-        input: FlashMatchInput | tuple
-            An instance of `FlashMatchInput` or outputs from
-            ``make_input_tensors()``.
+        input: FlashMatchInput | dict
+            An instance of `FlashMatchInput` or dictonary of collated input
+            See ``collate_input()``.
 
-        flash_key: str, optional
-            See ``make_input_tensors()``. Default: `pe_v`.
-
-        pairs: iterable, optional
-            List of indices (int,int) for charge-flash pairs. Default: None.
-            See the output of ``prefilter()`` on how to produce the list.
+        pairs: tuple(tensor), optional
+            List of indices `(idx_q, idx_f)` for charge-flash pairs.
+            Default: None.
+            The lenghts `len(idx_q) == len(idx_f)` give the number of
+            pairs.  See ``prefilter()`` on how to produce such pairs.
 
         Returns
         -------
         batch: dict
             Batch input data as a dictionary.
 
-            `pairs`: list(int,int)
+            `pairs`: tuple(tensor) or None
                 Taken from function argument.
 
             `n_qcluster`, `n_flash`: int, int
@@ -279,8 +288,8 @@ class XBatchOptimizer:
 
             `qclusters`: Tensor
                 Combined `qpt_v` of all charge clusters in a single tensor.
-                A cluster is repeated if it appears multiple time in the `pairs`
-                list.
+                A cluster is repeated if it appears multiple time in the
+                `pairs`.
 
             `sizes`: Tensor
                 Number of points per cluster. 
@@ -298,10 +307,10 @@ class XBatchOptimizer:
         device = self.device
 
         if isinstance(input, FlashMatchInput):
-            qclusters, flashes, dx_ranges = \
-                self.make_input_tensors(input, flash_key)
-        else:
-            qclusters, flashes, dx_ranges = input
+            input = self.collate_input(input)
+        
+        qclusters, flashes, dx_ranges = \
+            tuple(map(input.__getitem__, ['qclusters','flashes','dx_ranges']))
 
         batch = {
             'pairs': pairs,
@@ -705,17 +714,13 @@ class XBatchOptimizer:
 
         return output
 
-    def fit(self, input : FlashMatchInput, flash_key='pe_v'):
+    def fit(self, input : FlashMatchInput):
         '''
         The Main fitting function.
 
         Arguments
         ---------
         input: FlashMatchInput
-
-        flash_key: str, optional 
-            Data key for flash tesnor. Default: `pe_v`.
-            Alternative option is `pe_true_v` For MC data without p.e. fluctuation.
 
         Returns
         -------
@@ -749,8 +754,9 @@ class XBatchOptimizer:
         '''
 
         # gather qcluster and flash tensors from FlashMatchInput instance
-        qclusters, flashes, dx_ranges = \
-            self.make_input_tensors(input, flash_key)
+        data = self.collate_input(input)
+        qclusters, flashes = \
+            tuple(map(data.__getitem__, ['qclusters','flashes']))
 
         output = {'tspent': 0.}
         pairs = None
@@ -776,10 +782,9 @@ class XBatchOptimizer:
             )
             pairs = pairs[:,0], pairs[:,1]
 
-        # make batch input and exe c_fit()
-        batch = self.make_input_batch(
-            (qclusters, flashes, dx_ranges), pairs=pairs
-        )
+        # make batch input and execute _fit()
+        batch = self.make_input_batch(data, pairs=pairs)
+
         fit = self._fit(batch, dx_init=dx_init)
         output['fit'] = fit
         output['tspent'] += fit['tspent']

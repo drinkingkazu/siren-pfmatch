@@ -23,6 +23,9 @@ class FlashMatchInput:
 
     @property
     def dx_truth(self):
+        '''
+        Truth offset in x for simulated data only.
+        '''
         dx_truth = torch.tensor([
             qclust.xmin_true - qclust.qpt_v[:,0].min()
             for qclust in self.qcluster_v
@@ -30,11 +33,70 @@ class FlashMatchInput:
         return dx_truth
 
     def dx_ranges(self, x_min, x_max):
+        '''
+        Offset ranges for all cluster bounded by (x_min, x_max).
+        
+        Arguments
+        ---------
+        x_min, xmax: float, float
+            Detector boundary in x.
+
+        Returns
+        -------
+        dx_ranges: tensor, (_N_,2)
+            Offset ranges in x of _N_ clusters.
+        '''
         dx_ranges = torch.tensor([
             [x_min - qclust.qpt_v[:,0].min(), x_max - qclust.qpt_v[:,0].max()]
             for qclust in self.qcluster_v
         ])
         return dx_ranges
+
+    def collate_q(self, device=None, key='qcluster_v'):
+        '''
+        Collation of all charge clusters as a list of tensors.
+
+        Arguments
+        ---------
+        device: torch.device, optional
+            Output device. Default: `None`.
+
+        key: str, optional
+            Input data key for the charge clusters. Defaut: 'qcluster_v'.
+            Other options are 'raw_qcluster_v' or 'all_pts_v'.
+
+        Returns
+        -------
+        output: list(tensors)
+            A list of tensors. Each tensor has a shape of (_N_,4), representing
+            _N_ points of positions and charges (x,y,z,q).
+        '''
+
+        output = [obj.qpt_v.to(device) for obj in getattr(self, key)]
+        return output
+
+    def collate_f(self, device=None, key='pe_v'):
+        '''
+        Collation of all flashes as a single tensor.
+
+        Arguments
+        --------
+        device: torch.device, optional
+            Output device. Default: `None`.
+
+        key: str, optional
+            Input data key for the flashes. Defaut: 'pe_v'.
+            Other options are 'pe_true_v' or `pe_err_v`.
+
+        Returns
+        -------
+        output: tesnor, (_N_,_M_)
+            Output tensor of _N_ flashes and _M_ PMTs.
+        '''
+        output = torch.stack([
+            getattr(obj, key).to(device) for obj in self .flash_v
+        ])
+        return output
 
     def shift_to_center(self,plib:PhotonLib|SirenVis):
         for q in self.qcluster_v: q.shift_to_center(plib)
