@@ -44,7 +44,14 @@ class ToyMC():
         self.plib = plib
         self.qcluster_algo = LightPath(cfg,self.detector)
         
-        n_out = self.plib._n_outs if hasattr (self.plib, '_n_outs') else len(self.plib)
+        # TODO(2024-03-06 kvt) Add `n_pmts` property for SirenVis
+        n_out = getattr(self.plib, '_n_outs', None) \
+            or getattr(self.plib, 'n_pmts', None)
+        if n_out is None:
+            raise AttributeError(
+                'No method to get n_pmts from', type(self.plib)
+            )
+
         self.pe_var = torch.ones(n_out)
         if self.pe_variation>0.:
             self.pe_var = abs(self.rng.normal(1.0, self.pe_variation, n_out))
