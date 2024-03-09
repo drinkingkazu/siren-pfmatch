@@ -104,8 +104,6 @@ class XBatchOptimizer:
 
         this_cfg = cfg.get('XBatchOptimizer', dict())
         self.cfg = this_cfg
-        if len(this_cfg) == 0:
-            print('Use default configuration.')
 
         self.initial_lr = this_cfg.get('InitLearningRate', 1.0)
         self.loss_scan_step = this_cfg.get('LossScanStepSize', 1.)
@@ -129,6 +127,16 @@ class XBatchOptimizer:
         self.data_key.update(this_cfg.get('DataKey', {}))
 
         self.crit = PoissonMatchLoss()
+
+        # verbose messages
+        if len(this_cfg) == 0:
+            self.print('[XBatchOptimizer] use default configuration')
+
+        self.print(f'[XBatchOptimizer] {type(vis_model)}, device={self.device}')
+
+        if (isinstance(vis_model, SirenVis)
+                and self.device==torch.device('cpu')):
+            self.print('[XBatchOptimizer] SirenVis on CPU could be SLOW !!!')
 
     def print(self, *values, **kwargs):
         if self.verbose:
@@ -414,7 +422,7 @@ class XBatchOptimizer:
         t_stop = time.time()
 
         output = {
-            'dx_init': torch.tensor(dx_init, device=self.device),
+            'dx_init': torch.tensor(dx_init),
             'tspent': t_stop - t_start,
         }
 
@@ -521,9 +529,9 @@ class XBatchOptimizer:
         t_stop = time.time()
 
         output = {
-            'pairs': pairs,
-            'dx_init': dx_init,
-            'loss_matrix': loss_matrix,
+            'pairs': (pairs[0].cpu(), pairs[1].cpu()),
+            'dx_init': dx_init.cpu(),
+            'loss_matrix': loss_matrix.cpu(),
             'tspent': t_stop - t_start,
         }
         return output
