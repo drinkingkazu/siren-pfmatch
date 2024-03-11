@@ -543,7 +543,7 @@ class XBatchOptimizer:
         Arguments
         ---------
         output: dict
-            Output dictionary from ``_fit()``, which gives `loss_best` and
+            Output dictionary from ``fit()``, which gives `loss_best` and
             `dx_best` for the charge-flash pair candidates.
 
         batch: dict
@@ -579,8 +579,16 @@ class XBatchOptimizer:
         n_f = batch['n_flash']
         pairs = torch.stack(batch['pairs']).cpu()
 
-        loss_matrix = torch.full((n_q, n_f), torch.inf)
-        loss_matrix[pairs[0],pairs[1]] = output['loss_best']
+        # clone loss_matrix from prefit
+        # create if not exisit (default value = inf)
+        loss_matrix = output.get('prefit', {}).get('loss_matrix')
+        if loss_matrix is None:
+            loss_matrix = torch.full((n_q, n_f), torch.inf)
+        else:
+            loss_matrix = loss_matrix.clone()
+
+        # update loss_matrix
+        loss_matrix[pairs[0],pairs[1]] = output['fit']['loss_best']
 
         # bipartite match
         try:
@@ -600,9 +608,9 @@ class XBatchOptimizer:
             sel = torch.tensor([m_pairs[i_q,i_f] for i_q,i_f in zip(*idx)])
 
             dx_best = torch.full((n_q,), torch.nan)
-            dx_best[idx[0]] = output['dx_best'][sel]
+            dx_best[idx[0]] = output['fit']['dx_best'][sel]
 
-            pe_sel = output['pe_best'][sel]
+            pe_sel = output['fit']['pe_best'][sel]
             pe_best = torch.full((n_q,pe_sel.size(1)), torch.nan)
             pe_best[idx[0]] = pe_sel
         else:
@@ -836,7 +844,7 @@ class XBatchOptimizer:
 
         # pair matching
         if self.do_match:
-            match = self.match(fit, batch)
+            match = self.match(output, batch)
             output['match'] = match
             output['tspent'] += match['tspent']
 
