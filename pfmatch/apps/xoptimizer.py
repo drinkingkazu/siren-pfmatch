@@ -133,10 +133,14 @@ class XOptimizer:
 
         idx = np.argmin(loss_v)
         if self.verbose:
-            print('[XOptimizer:scan_loss] choosing the initial dx %.2f xmin %.2f' % (dx_v[idx],dx_v[i]+input[:,0].min().item()))
+            print('[XOptimizer:scan_loss] choosing the initial dx %.2f xmin %.2f' % (dx_v[idx],dx_v[idx]+input[:,0].min().item()))
 
         tspent = time.time()-tstart
-        return loss_v[idx], dx_v[idx], hypothesis_v[idx], tspent
+        return dict(loss_init=loss_v[idx],
+            dx_init=dx_v[idx],
+            pe_init=hypothesis_v[idx],
+            tspent=tspent,
+            )
         
     def fit(self, qcluster:QCluster, flash:Flash, dx:float = None):
         """
@@ -152,10 +156,10 @@ class XOptimizer:
         Returns
           loss, reco_x, reco_pe
         """
-
+        t0=time.time()
         input  = qcluster.qpt_v
         target = flash.pe_v
-
+        out_dict={}
         # Initialize the result containers
         self._loss_history = []
         self._xmin_history = []
@@ -181,7 +185,8 @@ class XOptimizer:
         if dx is not None:
             self.model.dx = dx
         elif self.loss_scan_step > 0:
-            self.model.dx = self.scan_loss(input,target)[1]
+            out_dict['prefit'] = self.scan_loss(input,target)
+            self.model.dx = out_dict['prefit']['dx_init']
         else:
             self.model.dx = 0.
 
@@ -191,16 +196,17 @@ class XOptimizer:
         if self.lrs_type:
             scheduler = self.lrs_type(optimizer, **self.lrs_args)
 
-        tstart = time.time()
+        t1 = time.time()
         best_loss = 1.e+20
         best_xmin = 1.e+20
         best_loss_found = False
         xmin_delta_large = False
         stuck_count = 0
+        niter = 0
         msg_fmt = '[XOptimizer:fit] iter %03d lr %.4f xmin %.3f loss %.6f stuck ctr %03d'
         
         for i in range(self.max_iterations):
-            
+            niter += 1
             pred = self.model(input)
             loss = self.criterion(pred, target)
             self._loss_history.append(loss.item())
@@ -249,11 +255,22 @@ class XOptimizer:
             if stuck_count >= self.stop_patience:
                 break
 
-        self._time_spent = time.time() - tstart
+        self._time_spent = time.time() - t1
 
         #return the best loss
         best_idx = np.argmin(self._loss_history)
-        return (self._loss_history[best_idx],
-            self._xmin_history[best_idx],
-            self._hypothesis_history[best_idx],
-            self._time_spent)
+
+        out_dict['fit']=dict(loss_best=self._loss_history[best_idx],
+            xmin_best=self._xmin_history[best_idx],
+            dx_best=self._xmin_history[best_idx] - input[:,0].min(),
+            pe_best=self._hypothesis_history[best_idx],
+            tspent=self._time_spent,
+            loss_hist=self._loss_history,
+            xmin_hist=self._xmin_history,
+            dx_hist=[v - input[:,0].min() for v in self._xmin_history],
+            niter=niter,
+            )
+
+        out_dict['tspent']=time.time()-t0
+
+        return out_dict

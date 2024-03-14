@@ -2,8 +2,9 @@ from __future__ import annotations
 from itertools import compress
 
 import torch
-from photonlib import PhotonLib
-from slar.nets import SirenVis
+from photonlib import PhotonLib, MultiLib
+from slar.nets import SirenVis, MultiVis
+
 
 
 class F(torch.autograd.Function):
@@ -13,25 +14,23 @@ class F(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, track, plib):
-        vox_ids = plib.meta.coord_to_voxel(track[:,:3])
         ctx.save_for_backward(track)
         ctx.plib = plib
-        pe_v = torch.sum(plib.vis[vox_ids]*(track[:, 3].unsqueeze(-1)), axis = 0)        
+        pe_v = torch.sum(plib.visibility(track[:,:3])*(track[:, 3].unsqueeze(-1)), axis = 0)   
         return pe_v
 
     @staticmethod
     def backward(ctx, grad_output):
         track = ctx.saved_tensors[0]
-        vox_ids = ctx.plib.meta.coord_to_voxel(track[:,:3])
-        
-        grad_plib = (ctx.plib.vis[vox_ids+1] - ctx.plib.vis[vox_ids]) / ctx.plib.meta.voxel_size[0]
+        grad_plib = ctx.plib.gradx(track[:,:3])
         grad_input = torch.matmul(grad_plib*track[:,3].unsqueeze(-1), grad_output.unsqueeze(-1))
         pad = torch.zeros(grad_input.shape[0], 3, device=grad_output.device)
         return torch.cat((grad_input,pad), -1), None
 
+
 class FlashHypothesis(torch.nn.Module):
 
-    def __init__(self, cfg:dict, plib:PhotonLib | SirenVis): 
+    def __init__(self, cfg:dict, plib:PhotonLib | MultiVis | SirenVis | MultiVis): 
         super().__init__()
         self._plib = plib
         # fmatch_cfg = cfg.get('FlashHypothesis',dict())
@@ -81,12 +80,16 @@ class FlashHypothesis(torch.nn.Module):
         self._dx.data.clamp_(self._dx_min, self._dx_max)
         shift = torch.cat((self._dx, torch.zeros(3, device=track.device)), -1)
         shifted_track = torch.add(track, shift.expand(track.shape[0], -1))
-        if isinstance(self._plib,PhotonLib):
+        if isinstance(self.plib,PhotonLib) or isinstance(self.plib,MultiLib):
             return F.apply(shifted_track,self.plib)
-        else:
-            x = self.plib.meta.norm_coord(shifted_track[:,:3])
-            pe_v = torch.sum(self.plib._inv_xform_vis(self.plib(x))*(shifted_track[:, 3].unsqueeze(-1)), axis = 0)
+        elif isinstance(self.plib,SirenVis) or isinstance(self.plib,MultiVis):
+            #x = self.plib.meta.norm_coord(shifted_track[:,:3])
+            #pe_v = torch.sum(self.plib._inv_xform_vis(self.plib(x))*(shifted_track[:, 3].unsqueeze(-1)), axis = 0)
+            pe_v = torch.sum(self.plib.visibility(shifted_track[:,:3])*(shifted_track[:,3].unsqueeze(-1)),axis=0)
             return pe_v
+        else:
+            raise TypeError('Unsupported type(vis_mod)', type(self.plib))
+
 
 class PLibPrediction(torch.autograd.Function):
     '''
@@ -101,25 +104,26 @@ class PLibPrediction(torch.autograd.Function):
     
         q = batch[:,3]
         
-        vox_ids = plib.meta.coord_to_voxel(coords)
+        #vox_ids = plib.meta.coord_to_voxel(coords)
         sizes = list(sizes.cpu())
         
-        ctx.save_for_backward(vox_ids, q)
+        #ctx.save_for_backward(vox_ids, q)
+        ctx.save_for_backward(coords,q)
         ctx.plib = plib
         ctx.sizes = sizes
         
-        split_vis_q = torch.split(plib.vis[vox_ids]*q.unsqueeze(-1), sizes)
+        split_vis_q = torch.split(plib.visibility(coords)*q.unsqueeze(-1), sizes)
         
         pred = torch.stack([vis_q.sum(axis=0) for vis_q in split_vis_q])
         return pred
             
     @staticmethod
     def backward(ctx, grad_output):
-        vox_ids, q = ctx.saved_tensors
+        coords, q = ctx.saved_tensors
         plib = ctx.plib
         sizes = ctx.sizes
         
-        grad_pred_x = (plib.vis[vox_ids+1] - plib.vis[vox_ids])
+        grad_pred_x = plib.gradx(coords)
         grad_pred_x /= plib.meta.voxel_size[0]
         grad_pred_x *= q.unsqueeze(-1)
         
@@ -153,7 +157,7 @@ class MultiFlashHypothesis(torch.nn.Module):
         `len(dx_init) == len(dx_ranges)`
     '''
     def __init__(self, 
-                 vis_model : PhotonLib | SirenVis, 
+                 vis_model : PhotonLib | MultiLib | SirenVis | MultiVis, 
                  dx_ranges, 
                  dx_init=None,
                  ):
@@ -256,10 +260,10 @@ class MultiFlashHypothesis(torch.nn.Module):
             `M` is the number of the PMTs.
 
         '''
-        if isinstance(vis_model, PhotonLib):
+        if isinstance(vis_model, PhotonLib) or isinstance(vis_model, MultiLib):
             output = PLibPrediction.apply(dx, batch, sizes, vis_model)
 
-        elif isinstance(vis_model, SirenVis):
+        elif isinstance(vis_model, SirenVis) or isinstance(vis_model, MultiVis):
             coords = batch[:,:3].clone()
             coords[:,0] += dx.repeat_interleave(sizes)
 

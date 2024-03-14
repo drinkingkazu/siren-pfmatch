@@ -6,8 +6,8 @@ import torch
 
 from itertools import compress
 from tqdm.auto import trange
-from photonlib import PhotonLib
-from slar.nets import SirenVis
+from photonlib import PhotonLib, MultiLib
+from slar.nets import SirenVis, MultiVis
 from pfmatch.datatypes import QCluster, Flash, FlashMatchInput
 from pfmatch.algorithms import PoissonMatchLoss, MultiFlashHypothesis
 from pfmatch.utils import scheduler_factory
@@ -99,7 +99,7 @@ class XBatchOptimizer:
         Verbose: False
     ```
     '''
-    def __init__(self, cfg:dict, vis_model: PhotonLib | SirenVis, device=None):
+    def __init__(self, cfg:dict, vis_model: PhotonLib | MultiVis| SirenVis | MultiVis, device=None):
         self._vis_model = vis_model.to(device)
 
         this_cfg = cfg.get('XBatchOptimizer', dict())
@@ -134,9 +134,9 @@ class XBatchOptimizer:
 
         self.print(f'[XBatchOptimizer] {type(vis_model)}, device={self.device}')
 
-        if (isinstance(vis_model, SirenVis)
+        if ((isinstance(vis_model, SirenVis) or isinstance(vis_model, MultiVis))
                 and self.device==torch.device('cpu')):
-            self.print('[XBatchOptimizer] SirenVis on CPU could be SLOW !!!')
+            self.print('[XBatchOptimizer] SirenVis/MultiVis on CPU could be SLOW !!!')
 
     def print(self, *values, **kwargs):
         if self.verbose:
@@ -233,7 +233,7 @@ class XBatchOptimizer:
         '''
 
         dx = self.get_dx_steps(qpt_v)
-
+        print('dx_steps',dx)
         n_steps = len(dx)
         sizes = torch.full((n_steps,), len(qpt_v), device=self.device)
         batch = qpt_v.repeat(n_steps, 1)

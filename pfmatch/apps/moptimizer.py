@@ -12,7 +12,7 @@ from pfmatch.apps import XOptimizer
 
 class MOptimizer:
     
-    def __init__(self, cfg:dict, plib: PhotonLib | SirenVis):
+    def __init__(self, cfg:dict, plib: PhotonLib | MultiVis | SirenVis | MultiVis):
         
         self._plib = plib
         this_cfg = cfg.get('MOptimizer',dict())
@@ -71,7 +71,11 @@ class MOptimizer:
         pairs_ids = []
         track_id, flash_id = 0, 0
         for qcluster, flash in pairs:
-            loss, reco_x, reco_pe, duration = self._model.scan_loss(qcluster.qpt_v,flash.pe_v)
+            prefit   = self._model.scan_loss(qcluster.qpt_v,flash.pe_v)
+            loss     = prefit['loss_init']
+            reco_x   = prefit['dx_init'  ]
+            reco_pe  = prefit['pe_init'  ]
+            duration = prefit['tspent'   ]
             match.loss_matrix[track_id, flash_id] = loss
             match.reco_x_matrix[track_id, flash_id] = reco_x
             match.reco_pe_matrix[track_id, flash_id] = reco_pe
@@ -126,7 +130,11 @@ class MOptimizer:
                 dx_init=None
                 if self.prefilter:
                     dx_init = match.reco_x_matrix[track_id, flash_id].item()
-                loss, reco_x, reco_pe, duration = self._model.fit(qcluster,flash,dx_init)
+                fit_res  = self._model.fit(qcluster,flash,dx_init)['fit']
+                loss     = fit_res['loss_best']
+                reco_x   = fit_res['dx_best'  ]
+                reco_pe  = fit_res['pe_best'  ]
+                duration = fit_res['tspent'] 
                 match.loss_matrix[track_id, flash_id] = loss
                 match.reco_x_matrix[track_id, flash_id] = reco_x
                 match.reco_pe_matrix[track_id, flash_id] = reco_pe
