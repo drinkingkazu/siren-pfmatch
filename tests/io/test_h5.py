@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from tempfile import NamedTemporaryFile
 from typing import List
 import numpy as np
@@ -68,9 +70,8 @@ def test_h5_write_read_many(fake_flashmatch_data, writable_temp_file):
         pe_vv.append(flash_v)
     f.write_many(qcluster_vv,pe_vv)
     f.close()
-    
     f = H5File.open(writable_temp_file,'r')
-    qcluster_vv_read, pe_vv_read = f.read_many(range(len(f)))
+    qcluster_vv_read, pe_vv_read = f.read_many(np.arange(len(f)))
     for i in range(len(qcluster_vv)):
         qcluster_v = qcluster_vv[i]
         qcluster_v_read = qcluster_vv_read[i]

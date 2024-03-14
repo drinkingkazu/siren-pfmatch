@@ -1,7 +1,7 @@
 #!/usr/bin/python
 from pfmatch.utils import get_config, load_config, load_detector_config
 from pfmatch.apps import ToyMC
-from photonlib import PhotonLib
+from photonlib import PhotonLib, MultiLib
 from pfmatch.io import H5File
 import yaml
 import fire
@@ -11,6 +11,7 @@ def main(cfg_file: str=None,
     cfg_keyword: str=None,
     num_events: int=10,
     plib_file: str='',
+    mlib_file: str='',
     output_file: str='',
     num_tracks: int=0):
 
@@ -27,10 +28,15 @@ def main(cfg_file: str=None,
 
     if plib_file:
         cfg['photonlib']=dict(filepath=plib_file)
-    if cfg.get('photonlib',dict()).get('filepath') is None:
-        raise RuntimeError('Must specify the photonlib file path using a flag --plib_file or in the config file.')
+    if mlib_file:
+        cfg['multilib']=dict(filepath=mlib_file)
+    if cfg.get('photonlib',dict()).get('filepath') is None and cfg.get('multilib',dict()).get('filepath') is None:
+        raise RuntimeError('Must specify the photonlib or multilib filepath using a flag --plib_file or --mlib_file.')
 
-    plib = PhotonLib.load(cfg)
+    if cfg.get('multilib',dict()).get('filepath'):
+        plib = MultiLib.load(cfg)
+    else:
+        plib = PhotonLib.load(cfg)
 
     if cfg.get('ToyMC') is None:
         raise RuntimeError('ToyMC configuration block is missing from the config file.')

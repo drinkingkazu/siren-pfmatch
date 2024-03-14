@@ -3,15 +3,15 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from photonlib import PhotonLib
-from slar.nets import SirenVis
+from photonlib import PhotonLib, MultiLib
+from slar.nets import SirenVis, MultiVis
 from pfmatch.algorithms import LightPath
 from pfmatch.datatypes import Flash, FlashMatchInput, QCluster
 
 class ToyMC():
     #TODO: Modify to work with photon library or siren input for visibility
 
-    def __init__(self, cfg:dict, detector_specs: dict, plib: PhotonLib | SirenVis):
+    def __init__(self, cfg:dict, detector_specs: dict, plib: PhotonLib | MultiLib | SirenVis | MultiVis):
         
         gen_cfg = cfg['ToyMC']
         self.time_algo  = gen_cfg["TimeAlgo"]
@@ -44,9 +44,7 @@ class ToyMC():
         self.plib = plib
         self.qcluster_algo = LightPath(cfg,self.detector)
         
-        # TODO(2024-03-06 kvt) Add `n_pmts` property for SirenVis
-        n_out = getattr(self.plib, '_n_outs', None) \
-            or getattr(self.plib, 'n_pmts', None)
+        n_out = self.plib.n_pmts
         if n_out is None:
             raise AttributeError(
                 'No method to get n_pmts from', type(self.plib)
@@ -237,16 +235,15 @@ class ToyMC():
         #posx_variation = 0.0
 
         qpt_v = self.qcluster_algo.track_to_qpoints(track)
-        xsum = 0. if len(qpt_v)<1 else torch.sum(qpt_v[:, 0]).item()
         # apply variation if needed
         if self.ly_variation > 0:
             var = abs(self.rng.normal(1.0, self.ly_variation, len(qpt_v)))
             for idx in range(len(qpt_v)):
                 qpt_v[idx][-1] *= var[idx]
         if self.posx_variation > 0:
-            var = abs(self.rng.normal(1.0, self.posx_variation/xsum, len(qpt_v)))
+            var = abs(self.rng.normal(0.0, self.posx_variation, len(qpt_v)))
             for idx in range(len(qpt_v)):
-                qpt_v[idx][0] *= var[idx]
+                qpt_v[idx][0] += var[idx]
 
         return qpt_v
 

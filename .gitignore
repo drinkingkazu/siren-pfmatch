@@ -8,3 +8,5 @@ _skbuild
 *.ipynb
 __pycache__
 docs/build
+*.ckpt
+*.h5

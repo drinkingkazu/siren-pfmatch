@@ -1,9 +1,18 @@
 import os
 import time
-
+import gdown
 import pytest
 
 pytest_plugins = "tests.fixtures"
+
+def pytest_configure(config):
+    filepath = os.path.join(os.path.dirname(__file__),'data/siren.ckpt')
+    if not os.path.isfile(filepath):
+        gdown.download(url='https://drive.google.com/uc?id=1DnEnAClmApP-egMmIJY8Nm1wa4aPCtFE',output=filepath)
+    if not os.path.isfile(filepath):
+        raise RuntimeError(f'Failed to download the data file for test: {filepath}')
+    else:
+        print('Using',filepath)
 
 def pytest_collection_modifyitems(config, items):
     for item in items:

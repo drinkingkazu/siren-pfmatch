@@ -81,7 +81,7 @@ def test_bipartite_match(rng, torch_rng, num_pmt):
     assert np.allclose(flashmatch.loss_v, flashmatch.loss_matrix[row_idx, col_idx])
     assert np.allclose(flashmatch.reco_x_v, flashmatch.reco_x_matrix[row_idx, col_idx])
     assert np.allclose(flashmatch.reco_pe_v, flashmatch.reco_pe_matrix[row_idx, col_idx])
-    assert flashmatch.duration.shape == (num_flashes,)
+    assert flashmatch.duration.shape == (min(num_flashes,num_qclusters),)
 
 """TODO: tests for
 global_match... how do I test this?
