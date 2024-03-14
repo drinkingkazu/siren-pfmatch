@@ -35,7 +35,8 @@ def test_XOptimizer_fit(XOptimizers, fake_flashmatch_data, num_pmt):
         dx_min += q.qpt_v[:,0].min()
         dx_max += q.qpt_v[:,0].max()
 
-        loss, xmin, reco_pe, _ = algo.fit(q, f)
+        result = algo.fit(q, f)['fit']
+        loss, xmin, reco_pe, = result['loss_best'],result['xmin_best'],result['pe_best']
         assert loss >= 0, 'loss is negative'
         assert reco_pe.shape == (num_pmt,), 'reco_pe shape is not correct'
         assert torch.all(reco_pe>=0), 'reco_pe is negative'
@@ -48,8 +49,8 @@ def test_XOptimizer_fit(XOptimizers, fake_flashmatch_data, num_pmt):
         assert torch.allclose(reco_pe, algo.hypothesis)
         assert algo.time_spent != 0, 'time_spent is zero'
         
-        
-        loss, xmin, reco_pe, _ =  algo.fit(q, f, dx=1e8) 
+        result = algo.fit(q, f, dx=1e8)['fit']
+        loss, xmin, reco_pe, = result['loss_best'],result['xmin_best'],result['pe_best']
         assert loss >= 0, 'loss is negative'
         assert reco_pe.shape == (num_pmt,), 'reco_pe shape is not correct'
         assert torch.all(reco_pe>=0), 'reco_pe is negative'
@@ -63,7 +64,8 @@ def test_XOptimizer_scan_loss(XOptimizers, fake_flashmatch_data, num_pmt):
         f = flash_v[0]
         q.shift_to_center(algo.plib)
         
-        loss, dx, pe, _ = algo.scan_loss(q.qpt_v, f.pe_v)
+        result = algo.scan_loss(q.qpt_v, f.pe_v)
+        loss, dx, pe = result['loss_init'],result['dx_init'],result['pe_init']
         assert loss >= 0, 'loss is negative'
         assert pe.shape == (num_pmt,), 'reco_pe shape is not correct'
         assert torch.all(pe>=0), 'reco_pe is negative'

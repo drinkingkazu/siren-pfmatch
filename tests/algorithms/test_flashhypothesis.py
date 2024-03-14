@@ -82,6 +82,8 @@ def test_FlashHypothesis_dx(rng, flash_algos, track_good, track_bad_xmin, track_
 def test_FlashHypothesis_forward(num_pmt, flash_algos, track_good, track_bad_xmin, track_bad_xmax):
     for flash_algo in flash_algos:
         # test good tracks
+        print('Using plib of type',type(flash_algo.plib))
+        print('Meta',flash_algo.plib.meta)
         fwd = flash_algo(track_good)
         assert fwd.shape == (num_pmt,), 'forward output (p.e.) shape is not correct'
         assert torch.all(fwd >= 0), 'forward output (p.e.) is negative'
