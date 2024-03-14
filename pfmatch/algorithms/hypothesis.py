@@ -124,7 +124,6 @@ class PLibPrediction(torch.autograd.Function):
         sizes = ctx.sizes
         
         grad_pred_x = plib.gradx(coords)
-        grad_pred_x /= plib.meta.voxel_size[0]
         grad_pred_x *= q.unsqueeze(-1)
         
         grad_pairs = zip(

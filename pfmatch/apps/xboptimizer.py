@@ -233,7 +233,6 @@ class XBatchOptimizer:
         '''
 
         dx = self.get_dx_steps(qpt_v)
-        print('dx_steps',dx)
         n_steps = len(dx)
         sizes = torch.full((n_steps,), len(qpt_v), device=self.device)
         batch = qpt_v.repeat(n_steps, 1)
