@@ -235,16 +235,15 @@ class ToyMC():
         #posx_variation = 0.0
 
         qpt_v = self.qcluster_algo.track_to_qpoints(track)
-        xsum = 0. if len(qpt_v)<1 else torch.sum(qpt_v[:, 0]).item()
         # apply variation if needed
         if self.ly_variation > 0:
             var = abs(self.rng.normal(1.0, self.ly_variation, len(qpt_v)))
             for idx in range(len(qpt_v)):
                 qpt_v[idx][-1] *= var[idx]
         if self.posx_variation > 0:
-            var = abs(self.rng.normal(1.0, self.posx_variation/xsum, len(qpt_v)))
+            var = abs(self.rng.normal(0.0, self.posx_variation, len(qpt_v)))
             for idx in range(len(qpt_v)):
-                qpt_v[idx][0] *= var[idx]
+                qpt_v[idx][0] += var[idx]
 
         return qpt_v
 
