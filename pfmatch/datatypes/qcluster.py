@@ -22,6 +22,10 @@ class QCluster:
     def __add__(self,other):
         return QCluster(torch.cat([self.qpt_v, other.qpt_v], 0))
     
+    def to(self,device):
+        self._qpt_v = self._qpt_v.to(device)
+        return self
+
     @property
     def qpt_v(self):
         return self._qpt_v

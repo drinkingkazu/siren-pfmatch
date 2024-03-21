@@ -21,6 +21,16 @@ class FlashMatchInput:
         # True matches, an array of integer-pairs.
         self.true_match = []
 
+    def to(self,device):
+
+        for data_list in [self.flash_v,self.qcluster_v,self.raw_qcluster_v]:
+
+            for idx in range(len(data_list)):
+
+                data_list[idx] = data_list[idx].to(device)
+        return self
+
+
     @property
     def dx_truth(self):
         '''
