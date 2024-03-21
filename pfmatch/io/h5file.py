@@ -93,14 +93,14 @@ class H5File(object):
                 pass
         return msg
         
-    def read_one(self,idx):
+    def read_one(self,idx,n_pmts):
         '''
         Read one event specified by the integer index
         '''
-        qcluster_vv,flash_vv = self.read_many([idx])
+        qcluster_vv,flash_vv = self.read_many([idx],n_pmts)
         return (qcluster_vv[0],flash_vv[0])
             
-    def read_many(self,idx_v):
+    def read_many(self,idx_v,n_pmts):
         '''
         Read many event specified by an array of integer indexes
         '''
@@ -132,10 +132,10 @@ class H5File(object):
             
             event_point = event_point_v[i]
             event_group = event_group_v[i]
-            event_flash = event_flash_v[i].reshape(-1,180)
+            event_flash = event_flash_v[i].reshape(-1,n_pmts)
 
-            event_flash_true = event_flash_true_v[i].reshape(-1,180)
-            event_flash_err  = event_flash_err_v[i].reshape(-1,180)
+            event_flash_true = event_flash_true_v[i].reshape(-1,n_pmts)
+            event_flash_err  = event_flash_err_v[i].reshape(-1,n_pmts)
 
             flash_err_v  = [None]*len(event_flash)
             flash_true_v = [None]*len(event_flash)
