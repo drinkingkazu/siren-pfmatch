@@ -57,7 +57,13 @@ def main(cfg_file: str=None,
 
     for _ in tqdm.tqdm(range(num_events)):
         fmatch_input = gen.make_flashmatch_inputs()
-        fout.write_one(fmatch_input.qcluster_v, fmatch_input.flash_v)
+        pts_ctr=[len(qc.qpt_v) for qc in fmatch_input.qcluster_v]
+        pes_ctr=[len(f.pe_v)   for f  in fmatch_input.flash_v   ]
+        if 0 in pts_ctr       : print('Empty qcluster found')
+        elif 0 in pes_ctr     : print('Empty flash found'   )
+        elif sum(pts_ctr) < 1 : print('No qcluster found'   )
+        elif sum(pes_ctr) < 1 : print('No flash found'      )
+        else: fout.write_one(fmatch_input.qcluster_v, fmatch_input.flash_v)
     
     fout.close()
 
