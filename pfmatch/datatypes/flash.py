@@ -20,6 +20,12 @@ class Flash:
         self._time_true = time_true   # MCFlash timing
         self._time_width = time_width # flash time integration window
 
+    def to(self,device):
+        self._pe_v = self.pe_v.to(device)
+        self._pe_true_v = self._pe_true_v.to(device)
+        self._pe_err_v  = self._pe_err_v.to(device)
+        return self
+
     def __len__(self):
         return len(self.pe_v)
 
