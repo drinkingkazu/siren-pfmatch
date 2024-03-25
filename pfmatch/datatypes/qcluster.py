@@ -26,6 +26,9 @@ class QCluster:
         self._qpt_v = self._qpt_v.to(device)
         return self
 
+    def min(self,axis):
+        return self.qpt_v[:,axis].min()
+
     @property
     def qpt_v(self):
         return self._qpt_v
