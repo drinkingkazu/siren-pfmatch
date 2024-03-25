@@ -40,6 +40,7 @@ class H5File(object):
             self._wh_point = self._f.create_dataset('point', shape=(0,), maxshape=(None,), dtype=dt_float)
             self._wh_group = self._f.create_dataset('group', shape=(0,), maxshape=(None,), dtype=dt_int  )
             self._wh_flash = self._f.create_dataset('flash', shape=(0,), maxshape=(None,), dtype=dt_float)
+            self._wh_match = self._f.create_dataset('match', shape=(0,), maxshape=(None,), dtype=dt_int  )
             self._wh_flash_true = self._f.create_dataset('flash_true', shape=(0,), maxshape=(None,), dtype=dt_float)
             self._wh_flash_err  = self._f.create_dataset('flash_err',  shape=(0,), maxshape=(None,), dtype=dt_float)
             self._wh_ftrue_group = self._f.create_dataset('ftrue_group', shape=(0,), maxshape=(None,), dtype=dt_int)
@@ -97,8 +98,8 @@ class H5File(object):
         '''
         Read one event specified by the integer index
         '''
-        qcluster_vv,flash_vv = self.read_many([idx],n_pmts)
-        return (qcluster_vv[0],flash_vv[0])
+        qcluster_vv,flash_vv,match_vv = self.read_many([idx],n_pmts)
+        return (qcluster_vv[0],flash_vv[0],match_vv[0])
             
     def read_many(self,idx_v,n_pmts):
         '''
@@ -106,6 +107,7 @@ class H5File(object):
         '''
         flash_vv = []
         qcluster_vv = []
+        match_vv = []
         
         for idx in idx_v:
             if idx >= len(self):
@@ -127,12 +129,22 @@ class H5File(object):
         event_ftime_v = [np.array(data) for data in self._f['ftime'][idx_v]]
         event_ftime_true_v = [np.array(data) for data in self._f['ftime_true'][idx_v]]
         event_ftime_width_v = [np.array(data) for data in self._f['ftime_width'][idx_v]]
+
+        if 'match' in self._f.keys():
+            event_match_v = [np.array(data) for data in self._f['match'][idx_v]]
+        else:
+            event_match_v = []
+            for i in range(len(idx_v)):
+                paired_idx_v = [[v,v] for v in event_fidx_v[i] if v in event_qidx_v[i]]
+                event_match_v.append(paired_idx_v)
+            event_match_v = np.array(event_match_v)
         
         for i in range(len(idx_v)):
             
             event_point = event_point_v[i]
             event_group = event_group_v[i]
             event_flash = event_flash_v[i].reshape(-1,n_pmts)
+            event_match = event_match_v[i].reshape(-1,2)
 
             event_flash_true = event_flash_true_v[i].reshape(-1,n_pmts)
             event_flash_err  = event_flash_err_v[i].reshape(-1,n_pmts)
@@ -168,17 +180,18 @@ class H5File(object):
             
             qcluster_vv.append(qcluster_v)
             flash_vv.append(flash_v)
+            match_vv.append(event_match)
             
-        return (qcluster_vv, flash_vv)
+        return (qcluster_vv, flash_vv, match_vv)
         
     
-    def write_one(self, qcluster_v: List[QCluster], flash_v: List[Flash]):
+    def write_one(self, qcluster_v: List[QCluster], flash_v: List[Flash], match_v):
         '''
         Write many event to a file with the provided list of QCluster and Flash
         '''
-        self.write_many([qcluster_v],[flash_v])
+        self.write_many([qcluster_v],[flash_v], [match_v])
         
-    def write_many(self,qcluster_vv: List[List[QCluster]], flash_vv: List[List[Flash]]):
+    def write_many(self,qcluster_vv: List[List[QCluster]], flash_vv: List[List[Flash]], match_vv):
         '''
         Write many event to a file with the provided list of QCluster and Flash
         '''
@@ -186,12 +199,16 @@ class H5File(object):
             raise ValueError('the dataset is not created in the w (write) nor a (append) mode')
         if len(qcluster_vv) != len(flash_vv):
             raise ValueError(f'len(qcluster_vv) ({len(qcluster_vv)}) != len(flash_vv) ({len(flash_vv)}')
+        if len(qcluster_vv) != len(match_vv):
+            raise ValueError(f'len(qcluster_vv) ({len(qcluster_vv)}) != len(match_vv) ({len(match_vv)})')
         
         # expand the output count by one for the new entry
         data_index = self._wh_point.shape[0]
         data_count = data_index+len(qcluster_vv)
         for h in [self._wh_point, self._wh_group,
-        self._wh_flash, self._wh_flash_err, self._wh_flash_true, self._wh_ferr_group, self._wh_ftrue_group,
+        self._wh_flash, self._wh_flash_err, self._wh_flash_true,
+        self._wh_match,
+        self._wh_ferr_group, self._wh_ftrue_group,
         self._wh_qidx, self._wh_qtime, self._wh_qxmin_true,
         self._wh_fidx, self._wh_ftime, self._wh_ftime_true, self._wh_ftime_width]:
             h.resize(data_count,axis=0)
@@ -212,7 +229,8 @@ class H5File(object):
             point_v = np.concatenate(point_v)
             self._wh_point[data_index] = point_v.flatten()
             self._wh_group[data_index] = point_group
-
+            self._wh_match[data_index] = np.array(match_vv[i])
+            
             # Write QCluster saclar attributes
             self._wh_qidx [data_index] = np.array([qc.idx  for qc in qcluster_v],dtype=np.int32)
             self._wh_qtime[data_index] = np.array([qc.time for qc in qcluster_v])

@@ -86,6 +86,7 @@ class ToyMC():
             
             # 1. create raw TPC position and light info
             qpt_v = self.make_qpoints(track)
+
             #raw_qcluster.idx = idx
             
             # 2. Create PMT PE spectrum from raw qcluster
@@ -112,18 +113,18 @@ class ToyMC():
                 qcluster.drop(min_tpcx, max_tpcx)
                 
             # 5. check for orphan
-            valid_match = len(qcluster) > 0 and flash.sum() > 0
-            
-            if len(qcluster) > 0:
+            valid_q = len(qcluster) > 0
+            valid_f = flash.sum() > 0
+
+            if valid_q and valid_f:
+                result.true_match.append((len(result.qcluster_v),len(result.flash_v)))
+
+            if valid_q:
                 result.qcluster_v.append(qcluster)
                 result.raw_qcluster_v.append(raw_qcluster)
                 
-            if flash.sum() > 0:
+            if valid_f:
                 result.flash_v.append(flash)
-                
-            if valid_match:
-                result.true_match.append((idx,idx))
-
         return result
 
     def gen_trajectories(self, num_tracks):
