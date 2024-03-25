@@ -58,10 +58,15 @@ class SirenCalibDataset(Dataset):
             fpath = self._files[fid]
             with closing(H5File.open(fpath, 'r', verbose=False)) as fin:
                 q_vv, f_vv = fin.read_many(ev_idxs, self._n_pmts)
-         
+            del fin
+               
             # fill qclusters
             for q_v in q_vv:
-                output['qclusters'].append(getattr(q_v[0], key_q))
+                # correct for the true position
+                qpts = getattr(q_v[0], key_q)
+                qpts[:,0] += q_v[0].xmin_true - qpts[:,0].min()
+                output['qclusters'].append(qpts)
+                #output['qclusters'].append(getattr(q_v[0], key_q))
             
             # fill flashes
             for f_v in f_vv:
@@ -95,13 +100,8 @@ def loader_factory(cfg):
 
     data_cfg = cfg['data']
 
-    sampler_cfg = dict(batch_size=1, drop_last=False)
-    sampler_cfg.update(data_cfg.get('sampler', {}))
-    sampler = BatchSampler(RandomSampler(ds), **sampler_cfg)
-
     loader_cfg = data_cfg.get('loader', {})
     loader = DataLoader(
-        ds, batch_sampler=sampler, collate_fn=ds.read_many,
-        **loader_cfg
+        ds, collate_fn=ds.read_many, **loader_cfg
     )
     return loader

@@ -53,8 +53,7 @@ class SOptimizer:
         target = torch.stack(batch['flashes']).to(device)
         sizes = list(map(len, batch['qclusters']))
         
-        # FIXME
-        q = qpts[:,3]
+        q = qpts[:,-1]
         vis_q = self._model.visibility(qpts[:,:3]) * q.unsqueeze(-1)    
     
         pred = torch.stack([
@@ -63,7 +62,9 @@ class SOptimizer:
         del vis_q
         
         # target pe from flashes
-        loss = self.criterion(pred, target)
+        #weights = target / target.sum(axis=1, keepdims=True)
+        weights = target 
+        loss = self.criterion(pred, target, weights)
         
         return pred, loss
     
@@ -114,8 +115,6 @@ class SOptimizer:
         if (self.save_every_epochs > 0 
                 and self.epochs % self.save_every_epochs == 0):
                 self.save()
-                
-
                 
         self.epoch += 1
         
