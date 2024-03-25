@@ -13,7 +13,8 @@ def main(cfg_file: str=None,
     plib_file: str='',
     mlib_file: str='',
     output_file: str='',
-    num_tracks: int=0):
+    num_tracks: int=0,
+    seed: int=-1):
 
     if cfg_file is None and cfg_keyword is None:
         raise RuntimeError('Must provide either --cfg_file or --cfg_keyword flag.')
@@ -46,6 +47,9 @@ def main(cfg_file: str=None,
         assert num_tracks > 0, f'--num_tracks must be positive (given {num_tracks})'
         cfg['ToyMC']['NumTracks']=num_tracks
 
+    if seed>=0:
+        cfg['ToyMC']['NumpySeed']=int(seed)
+
     gen = ToyMC(cfg,det_cfg,plib)
 
     if output_file:
@@ -63,7 +67,7 @@ def main(cfg_file: str=None,
         elif 0 in pes_ctr     : print('Empty flash found'   )
         elif sum(pts_ctr) < 1 : print('No qcluster found'   )
         elif sum(pes_ctr) < 1 : print('No flash found'      )
-        else: fout.write_one(fmatch_input.qcluster_v, fmatch_input.flash_v)
+        else: fout.write_one(fmatch_input.qcluster_v, fmatch_input.flash_v, fmatch_input.true_match)
     
     fout.close()
 

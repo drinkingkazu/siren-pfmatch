@@ -229,7 +229,7 @@ class H5File(object):
             point_v = np.concatenate(point_v)
             self._wh_point[data_index] = point_v.flatten()
             self._wh_group[data_index] = point_group
-            self._wh_match[data_index] = np.array(match_vv[i])
+            self._wh_match[data_index] = np.array(match_vv[i]).flatten()
             
             # Write QCluster saclar attributes
             self._wh_qidx [data_index] = np.array([qc.idx  for qc in qcluster_v],dtype=np.int32)
