@@ -609,12 +609,16 @@ class XBatchOptimizer:
             dx_best = torch.full((n_q,), torch.nan)
             dx_best[idx[0]] = output['fit']['dx_best'][sel]
 
+            loss_best = torch.full((n_q,), torch.nan)
+            loss_best[idx[0]] = output['fit']['loss_best'][sel]
+
             pe_sel = output['fit']['pe_best'][sel]
             pe_best = torch.full((n_q,pe_sel.size(1)), torch.nan)
             pe_best[idx[0]] = pe_sel
         else:
             dx_best = None
             pe_best = None
+            loss_best = None
 
         t_stop = time.time()
 
@@ -623,7 +627,8 @@ class XBatchOptimizer:
             'idx': idx,
             'loss_matrix': loss_matrix,
             'dx_best': dx_best,
-            'pe_best': pe_best
+            'pe_best': pe_best,
+            'loss_best': loss_best,
         }
         return match_output
 
