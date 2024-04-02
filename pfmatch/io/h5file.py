@@ -21,11 +21,16 @@ class H5File(object):
         file_cfg = cfg.get('H5File',dict())
         file_name = file_cfg.get('FileName','garbage.h5')
         mode = file_cfg.get('Mode','w')
-        self._open(file_name,mode)
+        self._verbose = file_cfg.get('Verbose', False)
+        self._open(file_name, mode)
+
+    def print(self, msg):
+        if self._verbose:
+            print(msg)
 
     @classmethod
-    def open(cls,file_name:str,mode:str): 
-        cfg = dict(H5File=dict(FileName=file_name,Mode=mode))
+    def open(cls,file_name:str, mode:str, verbose=False): 
+        cfg = dict(H5File=dict(FileName=file_name,Mode=mode, Verbose=verbose))
         return cls(cfg)
 
     def _open(self, file_name:str, mode:str):
@@ -34,7 +39,7 @@ class H5File(object):
         self._mode = mode
         dt_float = h5.vlen_dtype(np.dtype('float32'))
         dt_int   = h5.vlen_dtype(np.dtype('int32'))
-        print(f'[H5File] opening {file_name} in mode {mode}')
+        self.print(f'[H5File] opening {file_name} in mode {mode}')
         self._f = h5.File(self._file_name,self._mode)
         if self._mode in ['w','a']:
             self._wh_point = self._f.create_dataset('point', shape=(0,), maxshape=(None,), dtype=dt_float)
@@ -70,7 +75,7 @@ class H5File(object):
         return self._f
 
     def close(self):
-        print(f'[H5File] closing {self._file_name}')
+        self.print(f'[H5File] closing {self._file_name}')
         self._f.close()
         
     def __del__(self):
