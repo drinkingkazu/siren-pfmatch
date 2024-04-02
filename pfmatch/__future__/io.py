@@ -19,16 +19,25 @@ class SirenCalibDataset(Dataset):
     def _build_file_index(self, files):
         cnts = torch.zeros(len(files), dtype=int)
         
+        self._files = []
         for i, fpath in enumerate(files):
             if not os.path.isfile(fpath):
                 raise FileNotFoundError(fpath)
                 
-            with closing(H5File.open(fpath, 'r', verbose=False)) as f:
-                cnts[i] = len(f)
+            #with closing(H5File.open(fpath, 'r', verbose=False)) as f:
+            #    cnts[i] = len(f)
+            f = H5File.open(fpath, 'r', verbose=False)
+            self._files.append(f)
+            cnts[i] = len(f)
         
-        self._files = files
+        #self._files = files
         self._file_idxs = torch.cat([torch.tensor([0]), cnts.cumsum(0)])
                    
+    def __del__(self):
+        while len(self._files) > 0:
+            f = self._files.pop()
+            f.close()
+
     def __len__(self):
         return self._file_idxs[-1]
 
@@ -55,10 +64,12 @@ class SirenCalibDataset(Dataset):
             ev_idxs = (idx[mask] - offset).tolist()
             ev_idxs.sort()
         
-            fpath = self._files[fid]
-            with closing(H5File.open(fpath, 'r', verbose=False)) as fin:
-                q_vv, f_vv = fin.read_many(ev_idxs, self._n_pmts)
-            del fin
+            #fpath = self._files[fid]
+            #with closing(H5File.open(fpath, 'r', verbose=False)) as fin:
+            #    q_vv, f_vv = fin.read_many(ev_idxs, self._n_pmts)
+            #del fin
+            fin = self._files[fid]
+            q_vv, f_vv = fin.read_many(ev_idxs, self._n_pmts)
                
             # fill qclusters
             for q_v in q_vv:

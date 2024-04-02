@@ -2,6 +2,7 @@ import torch
 
 from tqdm.auto import tqdm
 from slar.nets import SirenVis, MultiVis
+from slar.optimizers import get_lr
 from pfmatch.utils import scheduler_factory, CSVLogger
 from pfmatch.algorithms import PoissonMatchLoss
 from pfmatch.__future__.io import loader_factory
@@ -21,11 +22,14 @@ class SOptimizer:
         
         train_cfg = cfg.get('train')
         self._optimizer = torch.optim.Adam(
-            self._model.parameters(), **cfg.get('optimizer', {})
+            self._model.parameters(), **train_cfg.get('optimizer', {})
         )
+
+        self.lr0 = self.lr
+        print('[SOptimizer] lr0:', self.lr)
         
         self._scheduler = scheduler_factory(
-            self._optimizer, cfg.get('scheduler', {})
+            self._optimizer, train_cfg.get('scheduler', {}), verbose=True,
         )
         
         self._dataloader = loader_factory(cfg)
@@ -45,6 +49,10 @@ class SOptimizer:
     def device(self):
         return self._model.device
     
+    @property
+    def lr(self):
+        return get_lr(self._optimizer)
+
     def step(self, batch):
         device = self.device
         
@@ -62,8 +70,10 @@ class SOptimizer:
         del vis_q
         
         # target pe from flashes
-        #weights = target / target.sum(axis=1, keepdims=True)
-        weights = target 
+        #weights = target 
+        #weights = 1.
+        weights = torch.zeros_like(target)
+        weights[target>0] = 1.
         loss = self.criterion(pred, target, weights)
         
         return pred, loss
@@ -88,7 +98,9 @@ class SOptimizer:
             loss.backward()
             self._optimizer.step()
             
-            #TODO(2024-03-22 kvt) update scheduler
+            #TODO(2024-03-27 kvt) add step(loss)
+            if self._scheduler is not None:
+                self._scheduler.step()
             
             t_train = time() - t_start
             
@@ -99,6 +111,7 @@ class SOptimizer:
                 'loss': loss.item(),
                 'twait': t_wait,
                 'ttrain' : t_train,
+                'lr': self.lr/self.lr0,
             }
             self.log(log_dict)
             self._logger.step(self.n_iter)
@@ -113,7 +126,7 @@ class SOptimizer:
             t_start = time()
             
         if (self.save_every_epochs > 0 
-                and self.epochs % self.save_every_epochs == 0):
+                and self.epoch % self.save_every_epochs == 0):
                 self.save()
                 
         self.epoch += 1
