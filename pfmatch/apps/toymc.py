@@ -185,8 +185,14 @@ class ToyMC():
                 end_pt = [between(xmin, xmax),
                           ymin,
                           between(zmin, zmax)]
+            elif self.track_algo == 'crossing':
+                start_pt = [xmin, between(ymin,ymax), between(zmin,zmax)]
+                end_pt   = [xmax, between(ymin,ymax), between(zmin,zmax)]
             else:
-                raise ValueError("Track algo not recognized, must be one of ['random', 'top-bottom']")
+                raise NotImplementedError(
+                    f'Track algo {self.track_algo} not recognized, ' \
+                    'must be one of ["random", "top-bottom", "crossing"]'
+                )
             res.append([start_pt, end_pt])
 
         return res
