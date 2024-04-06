@@ -2,6 +2,7 @@ from typing import List
 import h5py as h5
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from pfmatch.datatypes import Flash, QCluster
 
@@ -21,11 +22,16 @@ class H5File(object):
         file_cfg = cfg.get('H5File',dict())
         file_name = file_cfg.get('FileName','garbage.h5')
         mode = file_cfg.get('Mode','w')
-        self._open(file_name,mode)
+        self._verbose = file_cfg.get('Verbose', False)
+        self._open(file_name, mode)
+
+    def print(self, msg):
+        if self._verbose:
+            print(msg)
 
     @classmethod
-    def open(cls,file_name:str,mode:str): 
-        cfg = dict(H5File=dict(FileName=file_name,Mode=mode))
+    def open(cls,file_name:str, mode:str, verbose=False): 
+        cfg = dict(H5File=dict(FileName=file_name,Mode=mode, Verbose=verbose))
         return cls(cfg)
 
     def _open(self, file_name:str, mode:str):
@@ -34,7 +40,7 @@ class H5File(object):
         self._mode = mode
         dt_float = h5.vlen_dtype(np.dtype('float32'))
         dt_int   = h5.vlen_dtype(np.dtype('int32'))
-        print(f'[H5File] opening {file_name} in mode {mode}')
+        self.print(f'[H5File] opening {file_name} in mode {mode}')
         self._f = h5.File(self._file_name,self._mode)
         if self._mode in ['w','a']:
             self._wh_point = self._f.create_dataset('point', shape=(0,), maxshape=(None,), dtype=dt_float)
@@ -70,7 +76,7 @@ class H5File(object):
         return self._f
 
     def close(self):
-        print(f'[H5File] closing {self._file_name}')
+        self.print(f'[H5File] closing {self._file_name}')
         self._f.close()
         
     def __del__(self):
@@ -101,7 +107,7 @@ class H5File(object):
         qcluster_vv,flash_vv,match_vv = self.read_many([idx],n_pmts)
         return (qcluster_vv[0],flash_vv[0],match_vv[0])
             
-    def read_many(self,idx_v,n_pmts):
+    def read_many(self,idx_v,n_pmts,verbose=False):
         '''
         Read many event specified by an array of integer indexes
         '''
@@ -139,7 +145,7 @@ class H5File(object):
                 event_match_v.append(paired_idx_v)
             event_match_v = np.array(event_match_v)
         
-        for i in range(len(idx_v)):
+        for i in tqdm(range(len(idx_v))):
             
             event_point = event_point_v[i]
             event_group = event_group_v[i]

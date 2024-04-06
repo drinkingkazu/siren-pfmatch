@@ -15,7 +15,7 @@ setup(
     license='MIT',
     keywords='Interface software for photon libraries in LArTPC experiments',
     scripts=['bin/pfmatch_generate_toymc.py', 'bin/train-siren-toymc.py'],
-    packages=['pfmatch','pfmatch/algorithms','pfmatch/datatypes','pfmatch/apps','pfmatch/io','pfmatch/utils'],
+    packages=['pfmatch','pfmatch/algorithms','pfmatch/datatypes','pfmatch/apps','pfmatch/io','pfmatch/utils','pfmatch/__future__'],
     package_data={'pfmatch': ['config/*.yaml']},
     install_requires=[
         'numpy',
