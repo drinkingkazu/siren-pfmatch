@@ -5,7 +5,7 @@ from slar.nets import SirenVis, MultiVis
 from slar.optimizers import get_lr
 from pfmatch.utils import scheduler_factory, CSVLogger
 from pfmatch.algorithms import PoissonMatchLoss
-from pfmatch.__future__.io import loader_factory
+from pfmatch.__future__.io_factories import loader_factory
 
 class SOptimizer:
     def __init__(self, cfg, device=None, resume=True):
@@ -57,21 +57,24 @@ class SOptimizer:
         device = self.device
         
         # prepare input to device
-        qpts = torch.cat(batch['qclusters']).to(device)
-        target = torch.stack(batch['flashes']).to(device)
-        sizes = list(map(len, batch['qclusters']))
+        if isinstance(batch['qclusters'],list):
+            qpts = torch.cat(batch['qclusters']).to(device)
+            sizes = list(map(len, batch['qclusters']))
+        else:
+            qpts  = batch['qclusters']
+            sizes = batch['sizes']
+        if isinstance(batch['flashes'],list):
+            target = torch.stack(batch['flashes']).to(device)
+        else:
+            target = batch['flashes']
         
-        q = qpts[:,-1]
-        vis_q = self._model.visibility(qpts[:,:3]) * q.unsqueeze(-1)    
+        #q = qpts[:,-1]
+        vis_q = self._model.visibility(qpts[:,:3]) * qpts[:,-1].unsqueeze(-1)    
     
-        pred = torch.stack([
-            arr.sum(axis=0) for arr in torch.split(vis_q, sizes)
-        ])
-        del vis_q
+        pred = torch.stack([arr.sum(axis=0) for arr in torch.split(vis_q, sizes)])
+        #del vis_q
         
         # target pe from flashes
-        #weights = target 
-        #weights = 1.
         weights = torch.zeros_like(target)
         weights[target>0] = 1.
         loss = self.criterion(pred, target, weights)
@@ -92,6 +95,7 @@ class SOptimizer:
             t_wait = time() - t_start
             
             t_start = time()
+            self._optimizer.zero_grad()
             pred, loss_pred = self.step(batch)
             
             loss = loss_pred.mean()

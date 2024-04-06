@@ -2,6 +2,7 @@ from typing import List
 import h5py as h5
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from pfmatch.datatypes import Flash, QCluster
 
@@ -106,7 +107,7 @@ class H5File(object):
         qcluster_vv,flash_vv,match_vv = self.read_many([idx],n_pmts)
         return (qcluster_vv[0],flash_vv[0],match_vv[0])
             
-    def read_many(self,idx_v,n_pmts):
+    def read_many(self,idx_v,n_pmts,verbose=False):
         '''
         Read many event specified by an array of integer indexes
         '''
@@ -144,7 +145,7 @@ class H5File(object):
                 event_match_v.append(paired_idx_v)
             event_match_v = np.array(event_match_v)
         
-        for i in range(len(idx_v)):
+        for i in tqdm(range(len(idx_v))):
             
             event_point = event_point_v[i]
             event_group = event_group_v[i]
