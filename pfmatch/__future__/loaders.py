@@ -8,7 +8,7 @@ class SimpleLoader:
         self.concat       = concat
         self.drop_last    = drop_last
         self._start_index = 0
-        self._last_index  = self._batch_size
+        self._last_index  = self.batch_size
 
         self._ds = ds
         self._all_idx = np.arange(len(ds))
@@ -42,7 +42,7 @@ class SimpleLoader:
             idx_v = self._all_idx[self._start_index:]
             self._start_index = len(self._ds)
 
-        res = self._ds.select(idx_v,concat)
+        res = self._ds.select(idx_v,self.concat)
         batch = dict(qclusters=res[0], flashes=res[1])
         if self.concat:
             batch['sizes']=res[2]
@@ -57,7 +57,7 @@ class RandomLoader:
         self.concat       = concat
         self.drop_last    = drop_last
         self._start_index = 0
-        self._last_index  = self._batch_size
+        self._last_index  = self.batch_size
 
         self._ds = ds
         self._all_idx = np.arange(len(ds))
@@ -94,7 +94,7 @@ class RandomLoader:
             idx_v = self._all_idx[self._start_index:]
             self._start_index = len(self._ds)
 
-        res = self._ds.select(idx_v,concat)
+        res = self._ds.select(idx_v,self.concat)
         batch = dict(qclusters=res[0], flashes=res[1])
         if self.concat:
             batch['sizes']=res[2]
