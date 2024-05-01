@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
 class SimpleLoader:
     def __init__(self, ds, batch_size, concat=False, drop_last=True):

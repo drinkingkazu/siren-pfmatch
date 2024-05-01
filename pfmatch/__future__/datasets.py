@@ -3,7 +3,7 @@ import torch
 import numpy as np
 DEFAULT_DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-from torch.utils.data import Dataset, RandomSampler, BatchSampler, DataLoader
+from torch.utils.data import Dataset
 from contextlib import closing
 from pfmatch.io import H5File
 
@@ -93,12 +93,16 @@ class SirenCalibDataset(Dataset):
 
 
 class TracksInMemory(Dataset):
-    def __init__(self, filepath, n_pmts, device=DEFAULT_DEVICE):
+    def __init__(self, filepath, n_pmts, 
+                 device=DEFAULT_DEVICE, 
+                 flash_key='pe_v'):
+
         super().__init__()
         self._n_pmts = n_pmts
         self.device = device
         self.qcluster_v = []
         self.flash_v = []
+        self._key_f = flash_key
         self._read_files(filepath)
     
     def device(self):
@@ -116,7 +120,12 @@ class TracksInMemory(Dataset):
             qs = np.concatenate(qs)
             fs = np.concatenate(fs)
             qs = [torch.as_tensor(qc.qpt_v,device=self.device) for qc in qs]
-            fs = [torch.as_tensor(f.pe_v[None,:],device=self.device) for f in fs]
+            #fs = [torch.as_tensor(f.pe_v[None,:],device=self.device) for f in fs]
+            fs = [
+                torch.as_tensor(getattr(f, self._key_f)[None,:],
+                                device=self.device)
+                for f in fs 
+            ]
             assert len(qs)==len(fs), 'Number of QCluster and Flash do not match'
             self.qcluster_v += qs
             self.flash_v += fs
@@ -143,12 +152,15 @@ class TracksInMemory(Dataset):
 
     
 class TracksInConsecutiveMemory(Dataset):
-    def __init__(self, filepath, n_pmts, device=DEFAULT_DEVICE):
+    def __init__(self, filepath, n_pmts, 
+                 device=DEFAULT_DEVICE,
+                 flash_key='pe_v'):
         super().__init__()
         self._n_pmts = n_pmts
         self.device = device
         self.qcluster_v = []
         self.flash_v = []
+        self._key_f = flash_key
         self._read_files(filepath)
     
     def device(self):
@@ -166,7 +178,12 @@ class TracksInConsecutiveMemory(Dataset):
             qs = np.concatenate(qs)
             fs = np.concatenate(fs)
             qs = [torch.as_tensor(qc.qpt_v,device=self.device) for qc in qs]
-            fs = [torch.as_tensor(f.pe_v[None,:],device=self.device) for f in fs]
+            #fs = [torch.as_tensor(f.pe_v[None,:],device=self.device) for f in fs]
+            fs = [
+                torch.as_tensor(getattr(f, self._key_f)[None,:],
+                                device=self.device)
+                for f in fs 
+            ]
             assert len(qs)==len(fs), 'Number of QCluster and Flash do not match'
             self.qcluster_v += qs
             self.flash_v += fs
