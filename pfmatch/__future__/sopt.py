@@ -7,6 +7,17 @@ from slar.optimizers import get_lr
 from pfmatch.utils import scheduler_factory, CSVLogger
 from pfmatch.algorithms import PoissonMatchLoss
 from pfmatch.__future__.io_factories import loader_factory
+from pfmatch.utils import import_from
+
+def criterion_factory(cfg):
+    crit_cfg = cfg['train'].get('criterion', {}).copy()
+    class_name = crit_cfg.pop('class', None)
+    if class_name is None:
+        return PoissonMatchLoss()
+
+    CritCls = import_from(class_name)
+    crit = CritCls(**crit_cfg)
+    return crit
 
 class SOptimizer:
     def __init__(self, cfg, device=None, resume=True):
@@ -36,7 +47,8 @@ class SOptimizer:
         self._dataloader = loader_factory(cfg)
         self._logger = CSVLogger(cfg)
         
-        self.criterion = PoissonMatchLoss()
+        self.criterion = criterion_factory(cfg)
+        print('[Criterion]', self.criterion)
 
         self.epoch = 0
         self.n_iter = 0
@@ -69,19 +81,11 @@ class SOptimizer:
         else:
             target = batch['flashes']
         
-        #q = qpts[:,-1]
+
         tstart=time()
         vis_q = self._model.visibility(qpts[:,:3]) * qpts[:,-1].unsqueeze(-1)    
-        print('\nforward',time()-tstart)
-        tstart=time()
         pred = torch.stack([arr.sum(axis=0) for arr in torch.split(vis_q, sizes)])
-        print('split',time()-tstart)
-        #del vis_q
-        
-        # target pe from flashes
-        weights = torch.zeros_like(target)
-        weights[target>0] = 1.
-        loss = self.criterion(pred, target, weights)
+        loss = self.criterion(pred, target)
         
         return pred, loss
     
@@ -149,7 +153,7 @@ class SOptimizer:
         import os
         fpath = os.path.join(
             self._logger.logdir,
-            f'iteration-{self.n_iter:06}-epoch-{self.epoch:03}.ckpt'
+            f'iteration-{self.n_iter:08}-epoch-{self.epoch:05}.ckpt'
         )
         self._model.save_state(fpath, self._optimizer)
         
