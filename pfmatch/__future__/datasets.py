@@ -3,7 +3,7 @@ import torch
 import numpy as np
 DEFAULT_DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-from torch.utils.data import Dataset, RandomSampler, BatchSampler, DataLoader
+from torch.utils.data import Dataset
 from contextlib import closing
 from pfmatch.io import H5File
 

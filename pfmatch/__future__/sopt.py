@@ -1,4 +1,5 @@
 import torch
+from time import time
 
 from tqdm.auto import tqdm
 from slar.nets import SirenVis, MultiVis
@@ -69,9 +70,12 @@ class SOptimizer:
             target = batch['flashes']
         
         #q = qpts[:,-1]
+        tstart=time()
         vis_q = self._model.visibility(qpts[:,:3]) * qpts[:,-1].unsqueeze(-1)    
-    
+        print('\nforward',time()-tstart)
+        tstart=time()
         pred = torch.stack([arr.sum(axis=0) for arr in torch.split(vis_q, sizes)])
+        print('split',time()-tstart)
         #del vis_q
         
         # target pe from flashes
@@ -88,7 +92,6 @@ class SOptimizer:
         self._logger.close()
     
     def train_one_epoch(self):
-        from time import time
         
         t_start = time()
         for batch in tqdm(self._dataloader, desc=f'epoch {self.epoch}'):
@@ -98,10 +101,12 @@ class SOptimizer:
             self._optimizer.zero_grad()
             pred, loss_pred = self.step(batch)
             
+            print('\nstep',time()-t_start)
+            tstart=time()
             loss = loss_pred.mean()
             loss.backward()
             self._optimizer.step()
-            
+            print('\nbackward',time()-tstart)
             #TODO(2024-03-27 kvt) add step(loss)
             if self._scheduler is not None:
                 self._scheduler.step()
