@@ -264,7 +264,7 @@ class ToyMC():
         Returns
             a flash instance 
         """
-        pe_true_v = torch.sum(self.plib.visibility(qpt_v[:,:3])*(qpt_v[:, 3].unsqueeze(-1)), axis = 0).int().float()
+        pe_true_v = torch.sum(self.plib.visibility(qpt_v[:,:3])*(qpt_v[:, 3].unsqueeze(-1)), axis = 0)
         pe_v = pe_true_v.detach().clone()
         pe_err_v = torch.zeros_like(pe_v)
         for idx in range(len(pe_v)):
