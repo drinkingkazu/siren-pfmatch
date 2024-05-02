@@ -193,7 +193,7 @@ class TracksInConsecutiveMemory(Dataset):
         self.len_v = tuple([len(qc) for qc in self.qcluster_v])
         self.qcluster_v = torch.concat(self.qcluster_v).to(self.device)
         self.flash_v = torch.concat(self.flash_v).to(self.device)
-        
+
     def __len__(self):
         return len(self.len_v)
     
